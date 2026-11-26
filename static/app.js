@@ -88,18 +88,58 @@ async function route() {
   }
   if (S.me && (hash === "#/" || hash === "#")) return go("#/app");
   showPage("landing");   // also in-page anchors (#how, #trust): the browser scrolls to them
+  drawHeroMap();
 }
 
 // ---------------------------------------------------------------- landing
-function drawHeroCities() {
-  const pos = (c) => [20 + (c.lng - 41.45) / 3.7 * 560, 5 + (42.40 - c.lat) / 0.95 * 300];
-  const offset = { Kutaisi: [0, -14], Poti: [-4, -14], Samtredia: [8, 26], Zestafoni: [10, 24], Batumi: [0, 26],
-                   Gori: [0, -14], Tbilisi: [-14, -12, "end"], Rustavi: [-14, 6, "end"] };
-  $("#hero-cities").innerHTML = S.meta.cities.map((c) => {
-    const [x, y] = pos(c), [dx, dy, anchor] = offset[c.name] || [0, -14];
-    return `<circle class="city" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="7"/>
-      <text x="${(x + dx).toFixed(0)}" y="${(y + dy).toFixed(0)}" text-anchor="${anchor || "middle"}">${esc(c.label)}</text>`;
-  }).join("");
+// The landing page's map: a real (dark) map with the real road through our 8 cities, and one truck driving it
+// end to end and back. Drawn the first time the landing page is shown (a hidden map has no size).
+let heroMap = null;
+async function drawHeroMap() {
+  if (heroMap) { heroMap.invalidateSize(); return; }
+  let road;
+  try { road = await (await fetch("/static/data/highway.json")).json(); } catch { return; }
+  heroMap = L.map("hero-map", { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+    boxZoom: false, keyboard: false, touchZoom: false, zoomSnap: 0.1 });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 12, attribution: "&copy; OpenStreetMap" }).addTo(heroMap);
+  const line = road.points;
+  heroMap.fitBounds(line, { padding: [40, 34] });
+  L.polyline(line, { color: "#05080C", weight: 9, opacity: .7, interactive: false }).addTo(heroMap);   // the road's edge
+  L.polyline(line, { color: "#F2B705", weight: 3.5, opacity: .95, interactive: false }).addTo(heroMap);
+  const size = { Tbilisi: 7, Batumi: 6, Kutaisi: 6 };   // bigger cities, bigger dots
+  // labels above or below their dot, never to the side: the end cities sit at the map's edges
+  const side = { Batumi: "bottom", Poti: "top", Samtredia: "bottom", Kutaisi: "top", Zestafoni: "bottom",
+                 Gori: "top", Tbilisi: "top", Rustavi: "bottom" };
+  S.meta.cities.forEach((c) => L.circleMarker([c.lat, c.lng], { radius: size[c.name] || 4.5, color: "#05080C", weight: 2,
+      fillColor: "#E8EDF3", fillOpacity: 1, interactive: false })
+    .bindTooltip(c.label, { permanent: true, direction: side[c.name] || "top", className: "hero-label", offset: [0, 0] })
+    .addTo(heroMap));
+  $("#hero-km").textContent = String(road.distance_km).replace(".", ",");
+
+  // the truck: moves along the road at an even speed (by distance, not by point), there and back
+  const dist = [0];
+  for (let i = 1; i < line.length; i++) dist.push(dist[i - 1] + heroMap.distance(line[i - 1], line[i]));
+  const total = dist[dist.length - 1];
+  const at = (d) => {
+    let i = dist.findIndex((x) => x >= d);
+    if (i <= 0) return line[0];
+    const f = (d - dist[i - 1]) / (dist[i] - dist[i - 1] || 1);
+    return [line[i - 1][0] + (line[i][0] - line[i - 1][0]) * f, line[i - 1][1] + (line[i][1] - line[i - 1][1]) * f];
+  };
+  const halo = L.circleMarker(line[0], { radius: 11, stroke: false, fillColor: "#F2B705", fillOpacity: .25, interactive: false }).addTo(heroMap);
+  const truck = L.circleMarker(line[0], { radius: 5.5, color: "#05080C", weight: 2, fillColor: "#F2B705", fillOpacity: 1, interactive: false }).addTo(heroMap);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const p = at(total * 0.55); halo.setLatLng(p); truck.setLatLng(p); return;
+  }
+  const lap = 26000;   // ms from Batumi to Rustavi
+  const step = (now) => {
+    requestAnimationFrame(step);
+    if ($("#page-landing").classList.contains("hidden")) return;   // nothing to move while the app is open
+    const t = (now % (2 * lap)) / lap, d = (t <= 1 ? t : 2 - t) * total, p = at(d);
+    halo.setLatLng(p); truck.setLatLng(p);
+  };
+  requestAnimationFrame(step);
 }
 
 // ---------------------------------------------------------------- sign in / register
@@ -767,7 +807,6 @@ function draftCard(d) {
   S.meta = await api("/api/meta");
   fillSelects();
   $("#legal-select").innerHTML = Object.entries(S.meta.legal_statuses).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
-  drawHeroCities();
   $("#login-form").onsubmit = login;
   $("#register-form").onsubmit = register;
   $$("#register-form input[name=role]").forEach((r) => r.onchange = showTruckBox);

@@ -82,13 +82,16 @@ a { color: var(--gold); }
 .hero p.lead { font-size: 18px; color: #C9D3DE; max-width: 56ch; margin: 0 0 30px; }
 .hero .ctas { display: flex; gap: 14px; flex-wrap: wrap; }
 .hero .btn.ghost { color: #fff; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.05); }
-.route-map { width: 100%; height: auto; }
-.route-map .road { fill: none; stroke: rgba(255,255,255,.16); stroke-width: 3; stroke-linecap: round; }
-.route-map .road.lit { stroke: var(--gold); stroke-width: 3; stroke-dasharray: 8 10; animation: flow 1.6s linear infinite; }
-.route-map circle.city { fill: var(--black); stroke: var(--gold); stroke-width: 3; }
-.route-map text { fill: #C9D3DE; font-size: 14px; font-family: var(--font); font-weight: 600; }
-.route-map .truck { fill: var(--gold); }
-@keyframes flow { to { stroke-dashoffset: -36; } }
+.hero-map-wrap { margin: 0; }
+.hero-map { height: 400px; border-radius: 16px; border: 1px solid var(--line); background: #0E151E;
+  box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.hero-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.95) saturate(.35); }
+.hero-map-wrap figcaption { margin-top: 12px; color: #8696A8; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.hero-map-wrap figcaption b { color: var(--text); }
+.cap-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex: none; }
+.leaflet-tooltip.hero-label { background: rgba(9,14,20,.82); border: 0; box-shadow: none; color: #E8EDF3; font-weight: 600;
+  font-size: 12px; padding: 1px 7px; border-radius: 6px; }
+.leaflet-tooltip.hero-label::before { display: none; }
 .strip { display: flex; flex-wrap: wrap; gap: 14px 40px; justify-content: center; padding: 30px max(16px, 6vw);
   color: #9FB0C2; font-size: 14px; font-weight: 600; }
 .strip span::before { content: "◆"; color: var(--gold); margin-right: 8px; font-size: 10px; vertical-align: 2px; }
@@ -352,6 +355,7 @@ aside.chat { background: var(--surface); border-left: 1px solid var(--line); dis
 }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
+  .hero-map { height: 280px; }
   .site-nav nav { display: none; }
   .auth { grid-template-columns: 1fr; }
   .auth-art { display: none; }

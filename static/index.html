@@ -45,19 +45,11 @@
           <a class="btn ghost lg" href="#/register/driver">ვარ მძღოლი</a>
         </div>
       </div>
-      <svg class="route-map" viewBox="0 0 600 310" role="img" aria-label="საქართველოს მთავარი სატვირთო მარშრუტები">
-        <!-- 8 cities placed by their real coordinates; roads follow the main highway -->
-        <path class="road" d="M48 252 L54 85"/>
-        <path class="road" d="M54 85 L154 83"/>
-        <path class="road" d="M154 83 L208 47"/>
-        <path class="road" d="M208 47 L260 97"/>
-        <path class="road" d="M260 97 L423 136"/>
-        <path class="road" d="M423 136 L531 221"/>
-        <path class="road" d="M531 221 L556 274"/>
-        <path class="road lit" d="M48 252 L54 85 L154 83 L208 47 L260 97 L423 136 L531 221"/>
-        <circle r="6" class="truck"><animateMotion dur="9s" repeatCount="indefinite" path="M48 252 L54 85 L154 83 L208 47 L260 97 L423 136 L531 221"/></circle>
-        <g id="hero-cities"></g>
-      </svg>
+      <!-- A real map with the real road (static/data/highway.json, from OSRM / OpenStreetMap: fetch_highway.py) -->
+      <figure class="hero-map-wrap">
+        <div id="hero-map" class="hero-map" role="img" aria-label="საქართველოს მთავარი საავტომობილო გზა, ბათუმიდან რუსთავამდე"></div>
+        <figcaption><span class="cap-dot"></span>ბათუმი → რუსთავი · <b id="hero-km">—</b> კმ რეალური გზა · 8 ქალაქი</figcaption>
+      </figure>
     </section>
   </div>
 

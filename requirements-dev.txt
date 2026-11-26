@@ -2,3 +2,4 @@
 -r requirements.txt
 pytest==9.2.0
 httpx==0.28.1
+truststore==0.10.5   # fetch_highway.py: HTTPS with Windows' certificate store
