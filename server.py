@@ -11,6 +11,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +24,9 @@ from core.pricing import compare_types, fair_price
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES, truck_type
 
 BASE = Path(__file__).resolve().parent
+# Read .env first: the key check below runs before the AI modules (which also read it) are imported. Without this
+# the site said "no key" although .env had one (found 26 Nov on the first local run). A terminal setting wins.
+load_dotenv(BASE / ".env")
 COOKIE = "kargonaut_session"
 STARTED = time.time()
 

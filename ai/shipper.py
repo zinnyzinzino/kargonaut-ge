@@ -20,10 +20,13 @@ def _cities(origin_city, destination_city):
     return origin, dest, missing
 
 
-def estimate_price(origin_city: str = "", destination_city: str = "", truck_type: str = "", weight_kg: int = 0,
+def estimate_price(origin_city: str, destination_city: str, truck_type: str = "", weight_kg: int = 0,
                    price_gel: float = 0) -> dict:
     """Fair price range for moving a load between two Georgian cities, from real road distances and cost
     estimates. Use for "how much would it cost?", "is 600 lari fair?", "which truck do I need for 3 tons?".
+    origin_city / destination_city: ALWAYS pass the cities the user named, in any form ("ქუთაისიდან" =
+    Kutaisi, "თბილისში" = Tbilisi). Pass "" only for a city the user really didn't name.
+    weight_kg in kilograms (5 ტონა = 5000).
     truck_type: Dry van, Refrigerated, Flatbed, Box truck or Sprinter van; leave it empty to compare every type
     that can carry the weight (then say which type is cheapest and which can't carry it).
     price_gel: a price the user has in mind or was quoted; the result's verdict says whether it is fair.
@@ -73,7 +76,7 @@ def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int
             "note": "Registered vehicles marked free by their drivers; a driver still has to offer on the load."}
 
 
-def propose_load(origin_city: str = "", destination_city: str = "", truck_type: str = "", weight_kg: int = 0,
+def propose_load(origin_city: str, destination_city: str, truck_type: str = "", weight_kg: int = 0,
                  pickup_date: str = "", pickup_date_words: str = "", price_gel: float = 0, cargo: str = "",
                  pieces: int = 0, needs_liftgate: bool = False, hazmat: bool = False, notes: str = "",
                  replaces_draft_id: str = "") -> dict:
