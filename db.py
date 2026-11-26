@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
     hazmat              INTEGER NOT NULL DEFAULT 0,
     fuel_l_per_100km    REAL,                      -- empty: the type's typical value (core/vehicles.py)
     cost_per_km         REAL,
+    length_m            REAL,                      -- cargo body inside, metres (optional; shown to shippers)
+    width_m             REAL,
+    height_m            REAL,
     available           INTEGER NOT NULL DEFAULT 1,
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -57,6 +60,7 @@ CREATE TABLE IF NOT EXISTS loads (
     cargo               TEXT,
     pieces              INTEGER,
     pickup_date         TEXT NOT NULL,             -- YYYY-MM-DD
+    deliver_by          TEXT,                      -- YYYY-MM-DD, optional: deliver no later than this day
     pickup_address      TEXT,
     delivery_address    TEXT,
     needs_liftgate      INTEGER NOT NULL DEFAULT 0,
@@ -139,6 +143,12 @@ def init_db():
         have = {r["name"] for r in conn.execute("PRAGMA table_info(loads)")}
         if "booked_at" not in have:   # 26 Nov: the transport order's date (when the shipper accepted an offer)
             conn.execute("ALTER TABLE loads ADD COLUMN booked_at TEXT")
+        if "deliver_by" not in have:  # 27 Nov: an optional delivery deadline (offers are checked against it)
+            conn.execute("ALTER TABLE loads ADD COLUMN deliver_by TEXT")
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(vehicles)")}
+        for column in ("length_m", "width_m", "height_m"):   # 27 Nov: the truck body's size
+            if column not in have:
+                conn.execute(f"ALTER TABLE vehicles ADD COLUMN {column} REAL")
 
 
 def rows(sql, args=()):

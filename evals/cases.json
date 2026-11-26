@@ -1,5 +1,5 @@
 {
-  "about": "The two assistants' exam. Every case runs on a fresh copy of the simulated demo data (seed_demo.py). 'as' says whose assistant answers: shipper = ნინო ბერიძე (599000001, loads №1, №2, №9), driver = ლევან გელაშვილი (599000005, a Dry van, 18 t, in Tbilisi). Expected numbers were computed from the demo data on 26 Nov 2026 (see evals/README.md).",
+  "about": "The two assistants' exam. Every case runs on a fresh copy of the simulated demo data (seed_demo.py). 'as' says whose assistant answers: shipper = ნინო ბერიძე (599000001, loads №1, №2, №9 and, since 27 Nov, №20 with a delivery deadline: 5 open after the draft), driver = ლევან გელაშვილი (599000005, a Dry van, 18 t, in Tbilisi). Expected numbers were computed from the demo data on 26 Nov 2026 (see evals/README.md).",
   "users": {"shipper": "599000001", "driver": "599000005"},
   "cases": [
     {
@@ -46,7 +46,7 @@
           "numbers_grounded": true}},
         {"event": "confirm_last_draft"},
         {"say": "რამდენი ტვირთი მაქვს ახლა ღია?", "expect": {
-          "tools_called": ["my_loads"], "reply_contains_any": ["4", "ოთხ"], "numbers_grounded": true}}
+          "tools_called": ["my_loads"], "reply_contains_any": ["5", "ხუთ"], "numbers_grounded": true}}
       ]
     },
     {

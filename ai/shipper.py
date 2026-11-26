@@ -52,8 +52,9 @@ def _type(value):
 
 def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int = 0) -> dict:
     """How many free registered vehicles could take a load picked up in this city, and how far the nearest are.
-    Use for "are there trucks in Kutaisi?", "how soon could someone come?". Shows no names or phone numbers:
-    drivers' contacts are shared only after a booking."""
+    Use for "are there trucks in Kutaisi?", "how soon could someone come?". This result has no names or phone
+    numbers and you never give one: the free trucks with their drivers' numbers are on the site's map
+    („ჩემი ტვირთები“ → „რუკა“); point the user there."""
     where = city(city_name)
     if not where:
         return needs_input(["city_name"], "რომელი ქალაქიდან უნდა აიღონ ტვირთი?")
@@ -79,18 +80,21 @@ def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int
 def propose_load(origin_city: str, destination_city: str, truck_type: str = "", weight_kg: int = 0,
                  pickup_date: str = "", pickup_date_words: str = "", price_gel: float = 0, cargo: str = "",
                  pieces: int = 0, needs_liftgate: bool = False, hazmat: bool = False, notes: str = "",
-                 replaces_draft_id: str = "") -> dict:
+                 replaces_draft_id: str = "", deliver_by: str = "", deliver_by_words: str = "") -> dict:
     """Prepare a DRAFT of a new load for the user to post. Nothing is posted: the user presses
     "დადასტურება" (Confirm) on the draft card. Never say it was posted.
     Pass only values the user gave. pickup_date: YYYY-MM-DD, converted from the user's words; pickup_date_words:
     the user's exact words for the day (e.g. "ხვალ", "5 დეკემბერს"). price_gel: the price the USER named; if they
     haven't named one, leave it 0: the result gives the fair range to suggest, and the user decides. Even when the
     user says "you set the price" ("ფასი შენ დააწესე"), never pass a price: give the fair range and ask which one.
-    weight_kg in kilograms (5 ტონა = 5000). To change a draft that isn't confirmed yet, call again with ALL values
-    and replaces_draft_id = the previous draft's draft_id."""
+    weight_kg in kilograms (5 ტონა = 5000). deliver_by: YYYY-MM-DD, only if the user says by when it must arrive
+    ("პარასკევამდე უნდა ჩავიდეს"); deliver_by_words: their exact words for it. Offers are then checked against it.
+    To change a draft that isn't confirmed yet, call again with ALL values and replaces_draft_id = the previous
+    draft's draft_id."""
     values = {"origin_city": origin_city, "destination_city": destination_city, "truck_type": truck_type,
               "weight_kg": weight_kg or None, "pickup_date": pickup_date, "price_gel": price_gel or None,
-              "cargo": cargo, "pieces": pieces, "needs_liftgate": needs_liftgate, "hazmat": hazmat, "notes": notes}
+              "cargo": cargo, "pieces": pieces, "needs_liftgate": needs_liftgate, "hazmat": hazmat, "notes": notes,
+              "deliver_by": deliver_by}
     result = marketplace.draft_load(me()["id"], values, replaces=replaces_draft_id)
     if result.get("error_code") == "missing":
         ask = needs_input(result["fields"], result["error"])
@@ -109,14 +113,17 @@ def my_loads(status: str = "") -> dict:
     offers each has. status: empty = all."""
     rows = marketplace.loads_of_shipper(me()["id"], status if status in marketplace.LOAD_STATUS_KA else "")
     return {"total": len(rows), "loads": [{k: r.get(k) for k in (
-        "id", "origin_city", "destination_city", "truck_type", "weight_kg", "pickup_date", "price_gel",
+        "id", "origin_city", "destination_city", "truck_type", "weight_kg", "pickup_date", "deliver_by", "price_gel",
         "status_label", "pending_offers", "agreed_price_gel", "cargo")} for r in rows]}
 
 
 def offers_for_my_load(load_id: int) -> dict:
-    """Drivers' offers on one of the user's loads, with recommended_offer_id (lowest price; on a tie the closer
-    vehicle) and whether each price is fair. Recommend that offer first, then the runner-up in one line. To book
-    a driver the user presses "მიღება" (Accept) next to the offer: you can't book for them."""
+    """Drivers' offers on one of the user's loads, with recommended_offer_id and whether each price is fair.
+    recommended_offer_id is Python's choice (ranking_rule): the lowest price; if the load has a delivery deadline
+    (deliver_by), the lowest price among drivers whose deadline.on_time is true. Recommend that offer first, then
+    the runner-up in one line. If a CHEAPER offer is not recommended, say why from its deadline: the trip it is
+    already booked for (busy_with) and hours_needed vs hours_available; never guess a driver's reliability yourself.
+    To book a driver the user presses "მიღება" (Accept) next to the offer: you can't book for them."""
     return marketplace.offers_for_load(me()["id"], int(load_id))
 
 
@@ -132,6 +139,9 @@ def _guard_propose_load(args, said):
     if args.get("price_gel") and not number_said(args["price_gel"], said):
         args["price_gel"] = 0
         notes["price_rejected"] = "The user hasn't chosen this price. Suggest the fair range and ask them."
+    if args.get("deliver_by") and not date_said(args["deliver_by"], args.get("deliver_by_words", ""), said):
+        args["deliver_by"] = ""
+        notes["deliver_by_rejected"] = "The user hasn't given a delivery deadline in their own words. Leave it out."
     if args.get("weight_kg") and not number_said(args["weight_kg"], said, tons=True):
         args["weight_kg"] = 0
         notes["weight_rejected"] = "The user hasn't said this weight. Ask them."

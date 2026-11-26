@@ -58,3 +58,7 @@ loosen a check to make a failing agent pass.
   explicit); "მოგება" (now forbidden in the driver's prompt). The affected cases then passed 5/5 (`2026-11-26_2317`).
 - 26 Nov, full run after the fixes, 21 cases (`driver-offer-shipper-price` added): **21/21**, 49 Gemini calls
   (`2026-11-26_2318`). The current baseline: `--compare` new runs with it.
+- 27 Nov, after the delivery deadline (load №20 added to the demo shipper, so `draft-full-confirm` expects 5 open
+  loads, not 4): **20/21**, 61 Gemini calls (`2026-11-27_0128`). The one fail, `driver-return-trip`, recommended
+  the right load with the right numbers but wrote "ტვირთის ID: 10", which the check doesn't read as №10; re-run
+  3/3 PASS. Check left as it is: "ID" isn't how the reply should name a load.

@@ -18,7 +18,8 @@ from datetime import date, timedelta
 
 import db
 from core.geo import CITIES, CITY_KA, city, route
-from core.matching import best_vehicle_for_load, compatibility_issues, rank_loads_for_driver, rank_offers
+from core.matching import (best_vehicle_for_load, compatibility_issues, deadline_check, rank_loads_for_driver,
+                           rank_offers)
 from core.pricing import fair_price
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES_TEXT, truck_type
 
@@ -160,6 +161,8 @@ def normalize_plate(value):
 
 VEHICLE_FIELD_KA = {"truck_type": "მანქანის ტიპი", "capacity_kg": "ტვირთამწეობა", "city": "სად დგას",
                     "plate": "სახელმწიფო ნომერი"}
+VEHICLE_SIZE_RANGE = {"length_m": (1, 16), "width_m": (1, 3), "height_m": (0.5, 4.5)}
+VEHICLE_SIZE_KA = {"length_m": "ძარის სიგრძე", "width_m": "ძარის სიგანე", "height_m": "ძარის სიმაღლე"}
 
 
 def validate_vehicle(values):
@@ -176,9 +179,16 @@ def validate_vehicle(values):
         return None, refuse("bad_capacity", "ტვირთამწეობა კილოგრამებში: 100-დან 40 000-მდე.")
     if db.one("SELECT id FROM vehicles WHERE plate = ?", (clean["plate"],)):
         return None, refuse("plate_taken", f"მანქანა ნომრით {clean['plate']} უკვე დარეგისტრირებულია.")
+    # The body's inside size (optional; a flatbed has no height). Out of range is refused, not guessed.
+    for field, (low, high) in VEHICLE_SIZE_RANGE.items():
+        x = _number(v.get(field))
+        if x and not low <= x <= high:
+            return None, refuse("bad_size", f"{VEHICLE_SIZE_KA[field]} მეტრებში: {low}-დან {high}-მდე.", fields=[field])
+        clean[field] = round(x, 2) if x else None
+    # Fuel use and wear aren't asked on the forms any more (27 Nov); the API still takes them, else the type's typical value
     fuel, wear = _number(v.get("fuel_l_per_100km")), _number(v.get("cost_per_km"))
     clean.update(capacity_kg=int(clean["capacity_kg"]), liftgate=_flag(v.get("liftgate")), hazmat=_flag(v.get("hazmat")),
-                 fuel_l_per_100km=fuel if fuel and 3 <= fuel <= 80 else None,   # empty: the type's typical value
+                 fuel_l_per_100km=fuel if fuel and 3 <= fuel <= 80 else None,
                  cost_per_km=wear if wear and 0 < wear <= 5 else None)
     return clean, None
 
@@ -196,6 +206,20 @@ def add_vehicle(driver_id, values):
     with db.connect() as conn:
         vehicle_id = _insert_vehicle(conn, driver_id, clean)
     return vehicle_view(db.one("SELECT * FROM vehicles WHERE id = ?", (vehicle_id,)))
+
+
+def free_vehicles():
+    """For shippers: every truck its driver marked free and that isn't on a booked or running trip, with the
+    driver's name, phone and rating, so a shipper can call. Drivers are told on the form that this is shown."""
+    rows = db.rows(
+        "SELECT v.*, u.name AS driver_name, u.phone AS driver_phone, u.is_demo AS driver_is_demo FROM vehicles v"
+        " JOIN users u ON u.id = v.driver_id WHERE v.available = 1 AND NOT EXISTS (SELECT 1 FROM loads l"
+        " WHERE l.vehicle_id = v.id AND l.status IN ('booked', 'in_transit')) ORDER BY v.city, v.capacity_kg DESC")
+    keep = ("id", "truck_type", "truck_label", "capacity_kg", "city", "city_label", "plate", "liftgate", "hazmat",
+            "length_m", "width_m", "height_m", "driver_name", "driver_phone")
+    return [{**{k: view[k] for k in keep}, "driver_is_demo": bool(r["driver_is_demo"]),
+             "driver_rating": rating_summary(r["driver_id"])}
+            for r in rows for view in [vehicle_view(r)]]
 
 
 def vehicles_of(driver_id, only_available=False):
@@ -231,6 +255,7 @@ def validate_load(values):
         "origin_city": city(v.get("origin_city")), "destination_city": city(v.get("destination_city")),
         "truck_type": truck_type(v.get("truck_type")), "weight_kg": _number(v.get("weight_kg")),
         "pickup_date": str(v.get("pickup_date") or "").strip() or None, "price_gel": _number(v.get("price_gel")),
+        "deliver_by": str(v.get("deliver_by") or "").strip() or None,
         "cargo": (v.get("cargo") or "").strip()[:200] or None,
         "pieces": int(_number(v.get("pieces")) or 0) or None,
         "pickup_address": (v.get("pickup_address") or "").strip()[:200] or None,
@@ -261,6 +286,13 @@ def validate_load(values):
         return None, refuse("past_date", "აღების თარიღი უკვე გავიდა.", field="pickup_date")
     if pickup > date.today() + timedelta(days=MAX_DAYS_AHEAD):
         return None, refuse("far_date", f"აღების თარიღი მაქსიმუმ {MAX_DAYS_AHEAD} დღით წინ.", field="pickup_date")
+    if clean["deliver_by"]:
+        try:
+            deadline = date.fromisoformat(clean["deliver_by"])
+        except ValueError:
+            return None, refuse("bad_date", "მიტანის ვადა ჩაწერეთ ასე: 2026-12-05.", field="deliver_by")
+        if deadline < pickup:
+            return None, refuse("deadline_before_pickup", "მიტანის ვადა აღების დღეზე ადრე ვერ იქნება.", field="deliver_by")
     clean["weight_kg"] = int(round(clean["weight_kg"]))
     clean["price_gel"] = round(clean["price_gel"], 2)
     return clean, None
@@ -425,6 +457,8 @@ def offers_for_load(shipper_id, load_id):
         "v.city AS vehicle_city, v.plate FROM offers o JOIN users u ON u.id = o.driver_id "
         "JOIN vehicles v ON v.id = o.vehicle_id WHERE o.load_id = ? AND o.status = 'pending'", (load_id,))
     check = price_check({**load})
+    for o in raw:   # with a deadline: can this truck make it, given the trips it's already booked for?
+        o["deadline"] = deadline_check(load, o["vehicle_city"], committed_trips(o["vehicle_id"], load))
     ranked = []
     for o in rank_offers(load, raw):
         verdict = price_check({**load, "price_gel": o["price_gel"]})
@@ -434,9 +468,24 @@ def offers_for_load(shipper_id, load_id):
                        "driver_rating": rating_summary(o["driver_id"]),
                        "price_verdict": verdict["verdict"] if verdict else None,
                        "price_verdict_label": verdict["verdict_label"] if verdict else None})
+    best = ranked[0] if ranked else None
     return {"load": load_view(load), "price_check": check, "offers": ranked,
-            "recommended_offer_id": ranked[0]["id"] if ranked else None,
-            "ranking_rule": "lowest price first; on a tie, the vehicle closer to the pickup"}
+            "recommended_offer_id": best["id"] if best else None,
+            "no_offer_makes_the_deadline": bool(best and best["deadline"] and not best["deadline"]["on_time"]),
+            "ranking_rule": ("lowest price among the drivers who can deliver by the deadline (their truck's other "
+                             "booked trips + this one fit the driving hours before deliver_by); on a tie, the vehicle "
+                             "closer to the pickup" if load.get("deliver_by") else
+                             "lowest price first; on a tie, the vehicle closer to the pickup")}
+
+
+def committed_trips(vehicle_id, load):
+    """The truck's trips already booked or on the road inside this load's window (its pickup day .. deadline):
+    the truck must do those too. Trips on the road count whatever their date."""
+    if not load.get("deliver_by"):
+        return []
+    return db.rows("SELECT id, origin_city, destination_city, pickup_date FROM loads WHERE vehicle_id = ? AND id != ? "
+                   "AND (status = 'in_transit' OR (status = 'booked' AND pickup_date BETWEEN ? AND ?))",
+                   (vehicle_id, load["id"], load["pickup_date"], load["deliver_by"]))
 
 
 def accept_offer(shipper_id, offer_id):

@@ -35,8 +35,12 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
 
 - `marketplace.py`: every rule (accounts, loads, offers, bookings, drafts). The site and the AI both call it.
   Errors are `{"error": <Georgian sentence>, "error_code": ...}`. A driver registers WITH their truck (type,
-  capacity, city, plate required; fuel use and wear optional): account and truck are saved together or not at all.
-  One plate = one truck.
+  capacity, city, plate required; the body's inside length/width/height in metres optional): account and truck are
+  saved together or not at all. One plate = one truck. The forms no longer ask fuel use and wear (27 Nov: only what a
+  shipper needs to know); the API still takes them, else the type's typical value.
+- Free trucks (27 Nov, user's decision): shippers see every free truck (marked free, not on a booked/running trip)
+  on their map with the driver's name and phone (`marketplace.free_vehicles`, `GET /api/vehicles/free`); the driver
+  form says so. The AI's `available_vehicles` still gives no names or numbers and points to the map.
 - The look (26 Nov): one dark theme, near-black with yellow (`--gold`), everywhere: landing, sign-in, the app.
   Colours are variables at the top of `static/style.css`; status colours are in `static/app.js` (`SHIP_GROUPS`,
   `TRIP_GROUPS`) and are bright on purpose (the badges have dark text).
@@ -47,6 +51,25 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   number self-check, offline answer), two roles (`shipper.py`, `driver.py`). **Docstrings are prompts.**
   Guards in Python (`ai/common.py`): a pickup date, price or weight the user never wrote is dropped and the
   tool asks. Lesson from logimind-ai: fixes in tools beat rules in the prompt.
+- „აღწერეთ ტვირთი“ (27 Nov, `ai/understand.py`, `POST /api/loads/understand`): on the new-load page a shipper types,
+  pastes (Facebook/Viber post) or SAYS the load; one Gemini JSON reading fills the form, nothing is saved. Python
+  checks each value: numbers must be in the text, cities must be named, "named" truck types must be in the words,
+  relative days (ხვალ, ზეგ, weekdays) are dated by Python; no type -> Python suggests the cheapest that carries the
+  weight (blue frame). Voice: the page records, converts to 16 kHz WAV (`toWav`), Gemini transcribes
+  (`VOICE_MODELS`: gemini-3.6-flash gave 504 on every recording), the transcript goes back into the box. Text ~1 s,
+  voice ~5 s. Tests: `tests/test_understand.py` (no Gemini).
+- „ჰკითხე AI-ს“ buttons (`askBtn` in app.js, gold ✨): at each decision (which offer, is my price fair, is this load
+  worth it, is my offer good, anything back from the destination, explain this price) they open the assistant with the
+  question already asked, the load's facts in it. One document-level click listener; `kaIn/kaFrom/kaToward` give the
+  city's Georgian case.
+- Delivery deadline (27 Nov): `loads.deliver_by` (optional; form, „აღწერეთ ტვირთი“, chat `propose_load` with a date
+  guard). With a deadline, `core/matching.deadline_check` chains each offer's truck through its trips already booked
+  or on the road in the window, then this load (real road times + 1 h handling a trip) against 9 driving h/day
+  (SIMULATED assumptions); `rank_offers` puts offers that can't make it last, so the recommendation can be a dearer
+  driver. Python decides; the AI explains from `deadline.busy_with` / hours. Demo: load 20 Tbilisi -> Poti, same day;
+  მერაბ 810 ₾ is booked that day (load 21, Zestafoni -> Batumi) so ირაკლი 910 ₾ is recommended. The transport order
+  prints the deadline and a BLANK late-delivery penalty (პირგასამტეხლო) line. No on-time history yet: „მივიტანე“'s
+  time vs deliver_by is the data to collect for that.
 - Ratings: after delivery each side rates the other once, 1-5 stars (`marketplace.rate`, table `ratings`). Averages show
   on offers, on the driver's load board and in the header. The offer ranking is still price first, then distance.
 - Proof of delivery: „მივიტანე“ (in_transit -> delivered) needs the signed paper (`POST /api/jobs/{id}/deliver`). The

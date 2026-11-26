@@ -143,6 +143,9 @@ def render(data):
         ["დატვირთვის თარიღი", _date(load["pickup_date"])],
         ["გადმოტვირთვის ადგილი",
          load["destination_label"] + (f", {load['delivery_address']}" if load.get("delivery_address") else "")],
+        *([["მიტანის ვადა", _date(load["deliver_by"]) + "-მდე (ჩათვლით)"],
+           # the amount is the two sides' agreement (Civil Code: პირგასამტეხლო); the site never fills it in
+           ["დაგვიანების პირგასამტეხლო", BLANK]] if load.get("deliver_by") else []),
         ["ტვირთი", load.get("cargo") or BLANK],
         ["წონა", f"{_n(load['weight_kg'])} კგ"],
         ["ადგილების რაოდენობა", str(load["pieces"]) if load.get("pieces") else BLANK],

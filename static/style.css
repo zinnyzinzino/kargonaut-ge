@@ -142,6 +142,9 @@ a { color: var(--gold); }
 .role-opt span { font-size: 12px; color: var(--muted); }
 .role-opt:has(input:checked) { border-color: var(--gold); background: var(--gold-soft); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.field-label { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin: 4px 0 -2px; }
+.field-label .opt { font-weight: 400; color: #6F7F91; }
 .truck-box { border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: 12px; padding: 16px;
   background: var(--surface); display: grid; gap: 12px; }
 .truck-box h2 { margin: 0; font-size: 16px; color: #fff; }
@@ -268,6 +271,13 @@ a { color: var(--gold); }
   background: var(--surface); color: var(--text); border: 2px solid var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,.5);
   display: grid; place-items: center; font-weight: 700; font-size: 12px; white-space: nowrap; }
 .city-dot.has { background: var(--gold); color: var(--gold-ink); }
+/* free trucks: a badge just under the city's name */
+.truck-dot { position: absolute; transform: translate(-50%, 18px); height: 22px; border-radius: 11px; padding: 0 8px;
+  background: var(--surface-3); color: var(--text); border: 1px solid var(--go); font-size: 11px; font-weight: 700;
+  display: grid; place-items: center; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.free-truck { border-top: 1px solid var(--line); padding: 6px 0; margin-top: 6px; font-size: 13px; line-height: 1.5; }
+.free-truck a { color: var(--gold); }
+.map-note { margin: 8px 2px 0; }
 
 /* ratings */
 .stars { color: var(--gold); font-weight: 700; white-space: nowrap; }
@@ -303,6 +313,34 @@ a { color: var(--gold); }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0 0; font-size: 14px; }
 .facts dt { color: var(--muted); } .facts dd { margin: 0; }
 
+/* a load's delivery deadline, and an offer that can't make it */
+.line.deadline { color: var(--gold); font-size: 13px; }
+.offers-table tr.late td { opacity: .8; }
+.offers-table tr.late .money { text-decoration: line-through; text-decoration-color: var(--loss); }
+
+/* „ჰკითხე AI-ს“: one look for every button that asks the assistant about this load */
+.ask-ai { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 10px; border-radius: 14px;
+  border: 1px solid var(--gold); background: var(--gold-soft); color: var(--gold); font: inherit; font-size: 12px;
+  font-weight: 700; cursor: pointer; white-space: nowrap; }
+.ask-ai:hover { background: var(--gold); color: var(--gold-ink); }
+
+/* „აღწერეთ ტვირთი“ (the AI fills the new-load form) */
+.panel.describe { margin-bottom: 18px; border-color: var(--gold); }
+.panel.describe .panel-head { flex-wrap: wrap; gap: 4px 12px; }
+#describe-text { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; resize: vertical;
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; }
+#describe-text:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 3px var(--gold-soft); }
+.describe-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+#describe-mic.recording { background: var(--loss); color: #fff; animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .65; } }
+#describe-result { margin-top: 10px; font-size: 14px; }
+#describe-result p { margin: 6px 0; }
+.describe-notes { margin: 6px 0; padding-left: 18px; color: var(--text); }
+.ai-filled input, .ai-filled select { border-color: var(--go) !important; box-shadow: 0 0 0 2px var(--go-soft); }
+.ai-suggested input, .ai-suggested select { border-color: var(--info) !important; box-shadow: 0 0 0 2px var(--info-soft); }
+.ai-missing input, .ai-missing select { border-color: var(--gold) !important; box-shadow: 0 0 0 2px var(--gold-soft); }
+.check.ai-filled { color: var(--go); }
+
 /* documents */
 .dropzone { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 30px 16px;
   border: 2px dashed var(--line); border-radius: 12px; background: var(--surface-2); cursor: pointer; }
@@ -317,6 +355,16 @@ a { color: var(--gold); }
 .ok-list { list-style: none; padding: 0; margin: 0; font-size: 14px; }
 .ok-list li { padding: 4px 0 4px 22px; position: relative; border-bottom: 1px dashed var(--line-soft); }
 .ok-list li::before { content: "✓"; position: absolute; left: 4px; color: var(--go); font-weight: 700; }
+.doc-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; background: var(--surface-2); }
+.doc-card h3 { margin: 0 0 2px; font-size: 15px; color: #fff; }
+.doc-card .facts { font-size: 13px; }
+.doc-card .facts dd { overflow-wrap: anywhere; }
+.tag { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--surface-3);
+  color: var(--muted); margin: 1px 2px 1px 0; }
+.blank { color: var(--muted); font-style: italic; }
+.warn-text { color: var(--gold); font-weight: 600; }
+.doc-ok { margin: 8px 0; font-size: 14px; }
+.doc-ok summary { cursor: pointer; color: var(--go); font-weight: 600; padding: 4px 0; }
 
 /* ---------------------------------------------------------------- assistant panel */
 aside.chat { background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }

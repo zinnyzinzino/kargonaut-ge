@@ -7,8 +7,14 @@ below, inside or above the range on purpose, so the price checks have something 
     python seed_demo.py            # only into an empty database
     python seed_demo.py --force    # deletes EVERYTHING in the database first
 
+Your own accounts in the demo (only from this command, never in the cloud or the tests): set in .env (git-ignored)
+KARGONAUT_MY_NAME, KARGONAUT_MY_SHIPPER_PHONE, KARGONAUT_MY_DRIVER_PHONE and optionally KARGONAUT_MY_PASSWORD
+(default demo1234). Then the first demo shipper (ნინო's loads, offers and trips) and the first demo driver
+(ლევანი's truck, trips and the trip on the road) are yours: your name and numbers, the same simulated data.
+
 The server runs seed() by itself when it starts with an empty database (the cloud's is always empty).
 """
+import os
 import sys
 from datetime import date, timedelta
 
@@ -36,6 +42,10 @@ DRIVERS = [  # (name, legal status, [(truck type, capacity kg, city, liftgate)])
     ("ვახტანგ ჩიქოვანი", "entrepreneur", [("flatbed", 22000, "Batumi", False)]),
     ("სანდრო ბაქრაძე", "person", [("sprinter_van", 1200, "Tbilisi", False), ("box_truck", 3500, "Tbilisi", False)]),
 ]
+# SIMULATED body sizes (inside, metres: length, width, height) by type, so the demo trucks show one on the map.
+# Usual sizes for such a body, not measured trucks; a flatbed has no height.
+DEMO_SIZES = {"dry_van": (13.6, 2.45, 2.7), "refrigerated": (13.3, 2.45, 2.6), "flatbed": (13.6, 2.5, None),
+              "box_truck": (6.2, 2.4, 2.3), "sprinter_van": (4.3, 1.75, 1.9)}
 # (shipper index, from, to, type, kg, cargo, days from today, where the price sits: low / fair / high)
 LOADS = [
     (0, "Tbilisi", "Batumi", "dry_van", 12000, "სამშენებლო მასალა", 2, "fair"),
@@ -57,18 +67,44 @@ def _price(origin, dest, kind, kg, where):
             "high": round(high * 1.1 / 10) * 10}[where]
 
 
-def seed():
+def my_accounts():
+    """{"name", "shipper_phone", "driver_phone", "password"} from the environment (.env), or None if not set."""
+    me = {"name": os.getenv("KARGONAUT_MY_NAME", "").strip(),
+          "shipper_phone": os.getenv("KARGONAUT_MY_SHIPPER_PHONE", "").strip(),
+          "driver_phone": os.getenv("KARGONAUT_MY_DRIVER_PHONE", "").strip(),
+          "password": os.getenv("KARGONAUT_MY_PASSWORD", "").strip() or PASSWORD}
+    return me if me["name"] and me["shipper_phone"] and me["driver_phone"] else None
+
+
+def _account(role, index, demo_phone, me):
+    """The index-0 shipper and driver are the user's own when `me` is given; everyone else is a demo account."""
+    if me and index == 0:
+        return me["name"], me[f"{role}_phone"], me["password"], False
+    return None, demo_phone, PASSWORD, True
+
+
+def seed(me=None):
+    """me: the user's own accounts (my_accounts()); None = only demo accounts (the server and the evals)."""
     db.init_db()
     phone = iter(f"5990000{n:02d}" for n in range(1, 100))
     shippers = []
-    for name, status, home in SHIPPERS:
-        shippers.append(mp.register("shipper", name, next(phone), PASSWORD, home, status, is_demo=True))
+    for i, (name, status, home) in enumerate(SHIPPERS):
+        own_name, number, password, demo = _account("shipper", i, next(phone), me)
+        made = mp.register("shipper", own_name or name, number, password, home, status, is_demo=demo)
+        if "error" in made:
+            raise SystemExit(f"Can't create the shipper account {number}: {made['error']}")
+        shippers.append(made)
     drivers = []
     plate = iter(f"DM-{n:03d}-KG" for n in range(1, 100))   # simulated plates: "DM" = demo, never a real truck's
-    for name, status, vehicles in DRIVERS:
-        trucks = [{"truck_type": kind, "capacity_kg": kg, "city": where, "liftgate": liftgate, "plate": next(plate)}
+    for i, (name, status, vehicles) in enumerate(DRIVERS):
+        trucks = [{"truck_type": kind, "capacity_kg": kg, "city": where, "liftgate": liftgate, "plate": next(plate),
+                   **dict(zip(("length_m", "width_m", "height_m"), DEMO_SIZES[kind]))}
                   for kind, kg, where, liftgate in vehicles]
-        d = mp.register("driver", name, next(phone), PASSWORD, vehicles[0][2], status, is_demo=True, vehicle=trucks[0])
+        own_name, number, password, demo = _account("driver", i, next(phone), me)
+        d = mp.register("driver", own_name or name, number, password, vehicles[0][2], status, is_demo=demo,
+                        vehicle=trucks[0])
+        if "error" in d:
+            raise SystemExit(f"Can't create the driver account {number}: {d['error']}")
         for truck in trucks[1:]:
             mp.add_vehicle(d["id"], truck)
         drivers.append(d)
@@ -86,8 +122,38 @@ def seed():
     mp.make_offer(drivers[3]["id"], {"load_id": first["id"], "price_gel": first["price_gel"] + 30})
     past = past_trips(shippers, drivers)   # after the open loads, so their numbers (№1-№10) never change
     on_road = trip_on_the_road(shippers, drivers)
+    deadline = load_with_a_deadline(shippers, drivers)   # last: №11-№19 above keep their numbers
     return {"shippers": len(shippers), "drivers": len(drivers), "loads": len(loads), "past_trips": past,
-            "on_the_road": on_road}
+            "on_the_road": on_road, "deadline_load": deadline}
+
+
+def load_with_a_deadline(shippers, drivers):
+    """A load that must arrive the same day (an export container for a ship leaving Poti), and two offers where the
+    CHEAPER driver can't make it: მერაბ's truck is already booked that day for Zestafoni -> Batumi, so Batumi ->
+    Tbilisi -> Poti on top is far over a day's driving. The site recommends ირაკლი (higher price, from Rustavi,
+    ~6 h). All SIMULATED; Python decides (core/matching.py deadline_check), the AI only explains."""
+    day = (date.today() + timedelta(days=2)).isoformat()
+    shipper, cheap, on_time = shippers[0], drivers[5], drivers[3]
+    load = mp.create_load(shipper["id"], {
+        "origin_city": "Tbilisi", "destination_city": "Poti", "truck_type": "dry_van", "weight_kg": 10000,
+        "cargo": "საექსპორტო ტვირთი (ღვინო ყუთებში)", "pieces": 20, "pickup_date": day, "deliver_by": day,
+        "pickup_address": "ბელიაშვილის ქ. 104", "delivery_address": "ფოთის პორტი, ტერმინალი 3",
+        "price_gel": _price("Tbilisi", "Poti", "dry_van", 10000, "fair"),
+        "notes": "იმავე დღეს უნდა ჩავიდეს: გემზე ჩატვირთვა 18:00-მდე (სიმულაცია)"})
+    # მერაბ's truck: booked the same day by another shipper (თამარ), Zestafoni -> Batumi
+    truck = mp.vehicles_of(cheap["id"])[0]
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pickup_date,"
+            " price_gel, notes, status, driver_id, vehicle_id, agreed_price_gel, booked_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (shippers[2]["id"], "Zestafoni", "Batumi", "dry_van", 12000, "ტვირთი", day, 420,
+             "სადემონსტრაციო რეისი (სიმულაცია)", "booked", cheap["id"], truck["id"], 420, date.today().isoformat()))
+    mp.make_offer(cheap["id"], {"load_id": load["id"], "price_gel": load["price_gel"] - 60,
+                                "message": "იაფად წავიღებ"})
+    mp.make_offer(on_time["id"], {"load_id": load["id"], "price_gel": load["price_gel"] + 40,
+                                  "message": "დილით ავიღებ, შუადღისთვის ფოთში ვიქნები"})
+    return load["id"]
 
 
 def trip_on_the_road(shippers, drivers):
@@ -142,6 +208,8 @@ def past_trips(shippers, drivers):
 
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
     db.init_db()
     if db.one("SELECT id FROM users LIMIT 1"):
         if "--force" not in sys.argv:
@@ -149,4 +217,8 @@ if __name__ == "__main__":
         with db.connect() as conn:
             for table in ("pods", "ratings", "offers", "loads", "vehicles", "sessions", "users"):
                 conn.execute(f"DELETE FROM {table}")
-    print(seed(), "- demo password:", PASSWORD, "- phones 599000001 ...")
+    me = my_accounts()
+    print(seed(me), "- demo password:", PASSWORD, "- phones 599000001 ...")
+    if me:
+        print(f"Your accounts: shipper {me['shipper_phone']}, driver {me['driver_phone']}"
+              f" ({'your password from .env' if os.getenv('KARGONAUT_MY_PASSWORD') else 'password ' + PASSWORD})")

@@ -24,7 +24,7 @@ def test_demo_accounts_are_made_on_an_empty_database(monkeypatch):
     monkeypatch.setenv("KARGONAUT_DEMO_SEED", "1")
     with TestClient(server.app) as c:   # runs the startup step
         health = c.get("/api/health").json()
-        assert health["users"] == 14 and health["loads"] == 19   # 10 open + 8 finished trips with ratings + 1 on the road
+        assert health["users"] == 14 and health["loads"] == 21   # 10 open + 8 finished + 1 on the road + the deadline load and the trip that clashes with it
         me = c.post("/api/login", json={"phone": "599000001", "password": "demo1234"}).json()
         assert me["is_demo"] is True
 
@@ -106,3 +106,21 @@ def test_a_clean_document_becomes_a_load_draft_only_after_confirm(no_gemini):
     driver = signed_in("driver", "555000002")
     other = _check(driver, "ge-01")
     assert driver.post("/api/paperwork/draft", json={"check_id": other["check_id"]}).status_code == 403
+
+
+def test_the_seed_can_put_the_users_own_accounts_in_place_of_the_first_demo_ones():
+    """python seed_demo.py with KARGONAUT_MY_* in .env: ნინო's and ლევანი's data under the user's name and numbers.
+    The server's own seed (and the evals) never do this; the login page's demo buttons move to the next demo accounts."""
+    import seed_demo
+    me = {"name": "ტესტ მომხმარებელი", "shipper_phone": "555000101", "driver_phone": "555000102", "password": "mypass123"}
+    seed_demo.seed(me)
+    c = TestClient(server.app)
+    shipper = c.post("/api/login", json={"phone": "555000101", "password": "mypass123"}).json()
+    assert shipper["name"] == "ტესტ მომხმარებელი" and shipper["is_demo"] is False
+    assert len(c.get("/api/loads/mine").json()) == 3 + 2 + 1        # ნინო's 3 open loads, 2 finished trips, the deadline load
+    d = TestClient(server.app)
+    d.post("/api/login", json={"phone": "555000102", "password": "mypass123"})
+    assert d.get("/api/vehicles/mine").json()[0]["truck_type"] == "dry_van"
+    assert c.post("/api/login", json={"phone": "599000001", "password": "demo1234"}).status_code == 401
+    logins = {x["role"]: x["phone"] for x in c.get("/api/meta").json()["demo_logins"]}
+    assert logins == {"shipper": "599000002", "driver": "599000006"}

@@ -63,6 +63,28 @@ def test_a_driver_registers_with_a_truck_or_not_at_all():
     assert other.status_code == 400 and "უკვე" in other.json()["detail"]        # one plate, one truck
 
 
+def test_a_truck_can_have_its_body_size_and_a_wrong_size_is_refused():
+    c = client_for("driver", "555000002", vehicle=truck(length_m=13.6, width_m=2.45))   # no height: optional
+    v = c.get("/api/vehicles/mine").json()[0]
+    assert (v["length_m"], v["width_m"], v["height_m"]) == (13.6, 2.45, None)
+    too_long = c.post("/api/vehicles", json=truck(plate="TB-200-AA", length_m=136))   # centimetres typed as metres
+    assert too_long.status_code == 400 and "სიგრძე" in too_long.json()["detail"]
+
+
+def test_shippers_see_free_trucks_with_the_drivers_phone():
+    shipper = client_for("shipper", "555000001")
+    driver = client_for("driver", "555000002", "ლევანი", vehicle=truck(length_m=13.6))
+    driver.post("/api/vehicles", json=truck(plate="TB-300-AA", city="Batumi"))
+    free = shipper.get("/api/vehicles/free").json()
+    assert len(free) == 2 and {t["driver_phone"] for t in free} == {"555000002"}
+    assert "password_hash" not in free[0] and free[0]["driver_name"] == "ლევანი"
+    busy = driver.get("/api/vehicles/mine").json()[0]
+    driver.post(f"/api/vehicles/{busy['id']}", json={"available": False})   # the driver marks it taken
+    assert [t["id"] for t in shipper.get("/api/vehicles/free").json()] != [busy["id"]]
+    assert len(shipper.get("/api/vehicles/free").json()) == 1
+    assert driver.get("/api/vehicles/free").status_code == 403              # for shippers only
+
+
 def test_not_signed_in():
     assert TestClient(server.app).get("/api/loads/mine").status_code == 401
 

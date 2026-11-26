@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -96,6 +96,11 @@ def meta():
         "cities": [{"name": c, "label": CITY_KA[c], "lat": CITY_COORDS[c][0], "lng": CITY_COORDS[c][1]} for c in CITIES],
         "truck_types": [{"code": t, "label": TRUCK_LABEL[t]} for t in TRUCK_TYPES],
         "legal_statuses": mp.LEGAL_STATUS_KA,
+        # The login page's one-click demo buttons: the first simulated shipper and driver that exist (with the
+        # user's own accounts seeded in, ნინო and ლევანი aren't there: the next demo accounts are used)
+        "demo_logins": [{"role": r["role"], "phone": r["phone"], "name": r["name"]} for r in (
+            db.one("SELECT role, phone, name FROM users WHERE is_demo = 1 AND role = ? ORDER BY id", (role,))
+            for role in ("shipper", "driver")) if r],
     }
 
 
@@ -184,6 +189,7 @@ class LoadIn(BaseModel):
     truck_type: str = ""
     weight_kg: float = 0
     pickup_date: str = ""
+    deliver_by: str = ""        # optional: deliver no later than this day
     price_gel: float = 0
     cargo: str = ""
     pieces: int = 0
@@ -260,6 +266,9 @@ class VehicleIn(BaseModel):
     hazmat: bool = False
     fuel_l_per_100km: float = 0
     cost_per_km: float = 0
+    length_m: float = 0
+    width_m: float = 0
+    height_m: float = 0
 
 
 class VehicleUpdateIn(BaseModel):
@@ -276,6 +285,12 @@ class OfferIn(BaseModel):
 @app.post("/api/vehicles")
 def add_vehicle(body: VehicleIn, user=Depends(driver)):
     return _ok(mp.add_vehicle(user["id"], body.model_dump()))
+
+
+@app.get("/api/vehicles/free")
+def free_vehicles(user=Depends(shipper)):
+    """Free trucks with their driver's name and phone: for the shipper's map."""
+    return mp.free_vehicles()
 
 
 @app.get("/api/vehicles/mine")
@@ -403,6 +418,49 @@ def chat(body: ChatIn, user=Depends(current_user)):
     return result
 
 
+# ---------------------------------------------------------------- „აღწერეთ ტვირთი“ (ai/understand.py)
+
+AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4"}
+AUDIO_MAX_BYTES = 5 * 1024 * 1024   # about 2.5 minutes of the page's 16 kHz WAV
+
+
+@app.post("/api/loads/understand")
+def understand_load(text: str = Form(""), audio: UploadFile | None = File(None), user=Depends(shipper)):
+    """A shipper's own words (typed, pasted or spoken) -> the new-load form's values. Gemini reads; Python checks
+    every value (ai/understand.py). Nothing is saved: the shipper checks the form and presses „გამოქვეყნება“."""
+    from ai.engine import MODELS as CHAT_MODELS
+    from ai.understand import VOICE_MODELS, read, transcribe
+    from paperwork.extract import GeminiReader, ReadingFailed
+
+    if not _gemini_key_set():
+        raise HTTPException(503, "AI ამ სერვერზე ჩართული არ არის: შეავსეთ ფორმა ხელით.")
+    transcript = None
+    try:
+        if audio is not None:
+            mime = (audio.content_type or "").split(";")[0]
+            if mime not in AUDIO_TYPES:
+                raise HTTPException(400, "ხმის ჩანაწერი ვერ წავიკითხეთ (ფორმატი).")
+            data = audio.file.read(AUDIO_MAX_BYTES + 1)
+            if len(data) > AUDIO_MAX_BYTES:
+                raise HTTPException(413, "ჩანაწერი ძალიან გრძელია: ორ წუთამდე.")
+            # A short recording answers in a few seconds: don't wait long on one model (VOICE_MODELS: why these)
+            ear = GeminiReader(models=VOICE_MODELS, on_status=_log, request_timeout=12, step_deadline=35,
+                               retry_waits=[])
+            transcript, _ = transcribe(data, mime, ear)
+            if not transcript:
+                raise HTTPException(400, "ჩანაწერში სიტყვები ვერ გავარჩიეთ: სცადეთ თავიდან ან დაწერეთ.")
+            text = transcript
+        if not text.strip():
+            raise HTTPException(400, "დაწერეთ ან თქვით, რა უნდა გაიგზავნოს.")
+        reader = GeminiReader(models=CHAT_MODELS, on_status=_log, request_timeout=25, step_deadline=40,
+                              retry_waits=[1.5])
+        result = read(text, reader)
+    except ReadingFailed as exc:
+        _log(f"understand: AI unavailable: {str(exc)[:300]}")
+        raise HTTPException(503, "AI ახლა ვერ პასუხობს: სცადეთ ცოტა ხანში ან შეავსეთ ფორმა ხელით.")
+    return {**result, "transcript": transcript}
+
+
 @app.post("/api/chat/reset")
 def chat_reset(user=Depends(current_user)):
     if user["id"] in assistants:
@@ -496,6 +554,8 @@ def paperwork_check(files: list[UploadFile] = File(default=[]), user=Depends(cur
         "documents": [{**doc, "kind_label": w.kind(doc["kind"])} for doc in state.get("documents", [])],
         "findings": state.get("findings", []),
         "agreements": state.get("agreements", []),
+        "calls": state.get("calls", []),       # which model read each document, or a saved reading
+        "our_carrier": OUR_CARRIER[0] if OUR_CARRIER else "",
         "draft_plan": {k: v for k, v in plan.items() if k != "document_fields"} if plan else None,
         "searchable": len(PAPERWORK_PASSAGES[check_id][1]),
         "not_searchable": [name for name, items in texts.items() if not items],

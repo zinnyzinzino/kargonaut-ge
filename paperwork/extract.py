@@ -193,11 +193,14 @@ def _check_allowed(path):
 class GeminiReader:
     """Sends one document at a time to Gemini; tries the models in order, one quick retry on 429/503."""
 
-    def __init__(self, models=None, on_status=None):
+    def __init__(self, models=None, on_status=None, request_timeout=REQUEST_TIMEOUT_S, step_deadline=STEP_DEADLINE_S,
+                 retry_waits=RETRY_WAITS_S):
+        """The time limits default to reading a document; ai/understand.py (a short message) passes shorter ones."""
         self.models = list(models or MODELS)
         self.on_status = on_status or (lambda text: None)
+        self.request_timeout, self.step_deadline, self.retry_waits = request_timeout, step_deadline, list(retry_waits)
         self.client = genai.Client(http_options=types.HttpOptions(
-            retry_options=types.HttpRetryOptions(attempts=1), timeout=REQUEST_TIMEOUT_S * 1000))
+            retry_options=types.HttpRetryOptions(attempts=1), timeout=request_timeout * 1000))
 
     def _ask(self, path, prompt, schema):
         _check_allowed(path)
@@ -209,15 +212,15 @@ class GeminiReader:
         config = types.GenerateContentConfig(response_mime_type="application/json", response_json_schema=schema)
         failures, step_started = [], time.time()
         for model in self.models:
-            for wait in [0] + RETRY_WAITS_S:
-                left = STEP_DEADLINE_S - (time.time() - step_started) - wait
+            for wait in [0] + self.retry_waits:
+                left = self.step_deadline - (time.time() - step_started) - wait
                 if left < MIN_CALL_S:
-                    failures.append(f"gave up after {STEP_DEADLINE_S} s")
+                    failures.append(f"gave up after {self.step_deadline} s")
                     raise ReadingFailed("; ".join(dict.fromkeys(failures)))
                 if wait:
                     time.sleep(wait)
                 started = time.time()
-                limit = min(REQUEST_TIMEOUT_S, left)   # never past the step's deadline
+                limit = min(self.request_timeout, left)   # never past the step's deadline
                 try:
                     response = call_with_deadline(
                         lambda: self.client.models.generate_content(model=model, contents=contents, config=config), limit)
