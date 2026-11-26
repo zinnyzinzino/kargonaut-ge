@@ -24,6 +24,11 @@ const stars = (r) => r && r.count
   : `<span class="muted small">ახალი, შეფასება ჯერ არ აქვს</span>`;
 const given = (r) => `<span class="muted small">თქვენი შეფასება: </span><span class="stars">${"★".repeat(r.stars)}${"☆".repeat(5 - r.stars)}</span>`;
 
+// ---------------------------------------------------------------- the transport order (PDF, made by the server)
+const orderLink = (l, small = false) => ["booked", "in_transit", "delivered"].includes(l.status)
+  ? `<a class="${small ? "link small" : "btn sm secondary"}" href="/api/loads/${l.id}/order.pdf" target="_blank" rel="noopener">`
+    + `გადაზიდვის შეკვეთა (PDF)</a>` : "";
+
 // ---------------------------------------------------------------- proof of delivery
 function podBlock(l, compact = false) {
   const p = l.pod;
@@ -433,7 +438,8 @@ async function loadDetail(l) {
     box.innerHTML = l.status === "cancelled" ? `<p class="muted">ტვირთი გაუქმებულია.</p>` :
       `<div class="pills" style="margin:10px 0 0">${steps.map((s, i) =>
         `<span class="pill" style="--c:${i <= at ? "#34C17B" : "#3A4A5E"}"><span class="dot"></span>${s[1]}</span>`).join("")}</div>
-       <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>` +
+       <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>
+       <div class="detail-actions">${orderLink(l)}</div>` +
       podBlock(l) + (l.can_rate ? ratingForm(l.id, "მძღოლი") : l.my_rating ? `<p>${given(l.my_rating)}</p>` : "");
     wireRatings(box, refresh);
     return;
@@ -458,7 +464,11 @@ async function loadDetail(l) {
   } catch (err) { box.innerHTML = `<p class="error-text">${esc(err.message)}</p>`; return; }
   $$("[data-accept]", box).forEach((b) => b.onclick = async () => {
     if (!confirm("დავჯავშნოთ ეს მძღოლი? დანარჩენი შეთავაზებები უარყოფილი იქნება.")) return;
-    try { await api(`/api/offers/${b.dataset.accept}/accept`, { json: {} }); toast("მძღოლი დაჯავშნილია: კონტაქტი ახლა ჩანს."); refresh(); }
+    try {
+      await api(`/api/offers/${b.dataset.accept}/accept`, { json: {} });
+      toast("მძღოლი დაჯავშნილია: კონტაქტი და გადაზიდვის შეკვეთა (PDF) ახლა ტვირთის დეტალებშია.");
+      refresh();
+    }
     catch (err) { toast(err.message, true); }
   });
   $$("[data-cancel]", box).forEach((b) => b.onclick = async () => {
@@ -684,7 +694,7 @@ function tripRow(t) {
       <div class="muted small">${esc(l.shipper.legal_status_label)}</div>` : `<span class="muted small">კონტაქტი ჯავშნის შემდეგ ჩანს</span>`}</div>
     <div class="money num">${gel(t.kind === "offer" ? t.offer.price_gel : l.agreed_price_gel)}
       <div class="muted small">${t.kind === "offer" ? "თქვენი შეთავაზება" : "შეთანხმებული"}</div></div>
-    <div>${action}</div>
+    <div>${action}${t.kind === "job" ? `<div style="margin-top:6px">${orderLink(l, true)}</div>` : ""}</div>
   </div>`;
 }
 

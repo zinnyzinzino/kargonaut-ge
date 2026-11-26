@@ -100,10 +100,11 @@ def trip_on_the_road(shippers, drivers):
         return conn.execute(
             "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pieces,"
             " pickup_date, pickup_address, delivery_address, price_gel, notes, status, driver_id, vehicle_id,"
-            " agreed_price_gel) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " agreed_price_gel, booked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (shipper["id"], "Gori", "Rustavi", vehicle["truck_type"], 900, "სათადარიგო ნაწილები", 6,
              date.today().isoformat(), "ცხინვალის გზატკეცილი №5", "მეგობრობის გამზ. 21", 310,
-             "სადემონსტრაციო რეისი (სიმულაცია)", "in_transit", driver["id"], vehicle["id"], 310)).lastrowid
+             "სადემონსტრაციო რეისი (სიმულაცია)", "in_transit", driver["id"], vehicle["id"], 310,
+             (date.today() - timedelta(days=1)).isoformat())).lastrowid
 
 
 # Finished trips with ratings, so ratings show from the start: (shipper, driver, from, to, kg, days ago, price,
@@ -127,10 +128,12 @@ def past_trips(shippers, drivers):
         with db.connect() as conn:
             load_id = conn.execute(
                 "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pickup_date,"
-                " price_gel, notes, status, driver_id, vehicle_id, agreed_price_gel) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " price_gel, notes, status, driver_id, vehicle_id, agreed_price_gel, booked_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (shipper["id"], origin, dest, vehicle["truck_type"], kg, "ტვირთი",
                  (date.today() - timedelta(days=days_ago)).isoformat(), price, "სადემონსტრაციო რეისი (სიმულაცია)",
-                 "delivered", driver["id"], vehicle["id"], price)).lastrowid
+                 "delivered", driver["id"], vehicle["id"], price,
+                 (date.today() - timedelta(days=days_ago + 1)).isoformat())).lastrowid
             conn.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",
                          (load_id, shipper["id"], driver["id"], to_driver, comment))
             conn.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",

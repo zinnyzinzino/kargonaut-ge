@@ -53,6 +53,16 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   paperwork agent reads it, Python checks the signature and the delivery city (`marketplace.pod_check_city`);
   problems don't block delivery, both sides see them with an action. Photos live next to the database (`data/pod/`).
   The demo trip on the road (load 19, Gori -> Rustavi) matches `demo_documents/ge/ge-06/pod.pdf`, whose reading ships.
+- Transport order (ტვირთის გადაზიდვის შეკვეთა, `transport_order.py`, `GET /api/loads/{id}/order.pdf`): Georgia has no
+  standard rate-confirmation form, so once a shipper accepts an offer the site writes the order itself from the
+  database (parties, truck and plate, route, cargo, agreed price), one A4 page, for the two sides only. What the site
+  doesn't know (ID numbers, payment terms) stays a blank line, never invented. fpdf2 with Noto Sans + Noto Sans
+  Georgian (`static/fonts`, OFL); Noto Sans has Latin/digits/₾/№ but no Georgian, so Georgian is the fallback font,
+  and "≈" isn't in either (write "დაახლოებით"). `loads.booked_at` is its date (added to old databases by `init_db`).
+- Georgian documents (user's research, 26 Nov): RC ≈ გადაზიდვის შეკვეთა (no standard form: we generate it),
+  BOL ≈ სასაქონლო ზედნადები (RS.ge e-waybill, the one official form: model its fields on the official form, not a
+  guess), POD ≈ signed ზედნადები or მიღება-ჩაბარების აქტი. Next candidates: read the ზედნადები; a printable
+  handover act for individuals; RS.ge e-waybill integration for businesses (needs their RS access).
 - Eval (`evals/`, see its README): 21 cases on real Gemini; baseline 21/21 on gemini-3.5-flash-lite (26 Nov).
   `python evals/selftest.py` first (also in pytest). Same rules as logimind-ai: read the reply before blaming the agent.
 - `paperwork/`: from logimind-ai, unchanged except `draft.py` (a document now becomes a marketplace load

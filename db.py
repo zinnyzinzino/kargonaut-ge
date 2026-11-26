@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS loads (
     driver_id           INTEGER REFERENCES users(id),
     vehicle_id          INTEGER REFERENCES vehicles(id),
     agreed_price_gel    REAL,
+    booked_at           TEXT,                      -- when the shipper accepted an offer (the transport order's date)
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -134,6 +135,10 @@ def connect():
 def init_db():
     with connect() as conn:
         conn.executescript(SCHEMA)
+        # Columns added after a database was first made (CREATE TABLE IF NOT EXISTS doesn't add them)
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(loads)")}
+        if "booked_at" not in have:   # 26 Nov: the transport order's date (when the shipper accepted an offer)
+            conn.execute("ALTER TABLE loads ADD COLUMN booked_at TEXT")
 
 
 def rows(sql, args=()):

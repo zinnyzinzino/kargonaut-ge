@@ -192,3 +192,27 @@ def test_delivery_needs_the_signed_paper_and_it_is_checked():
     assert row["status"] == "delivered" and row["pod"]["file_name"] == "pod.pdf"
     assert shipper.get(f"/api/loads/{rustavi['id']}/pod/file").status_code == 200
     assert client_for("shipper", "555000009").get(f"/api/loads/{rustavi['id']}/pod/file").status_code == 404
+
+
+def test_transport_order_pdf_for_both_sides_once_booked():
+    """გადაზიდვის შეკვეთა: Georgian freight has no standard rate confirmation, so the site writes the order itself."""
+    import io
+
+    from pypdf import PdfReader
+    shipper = client_for("shipper", "555000001", "ნინო ბერიძე")
+    driver = client_for("driver", "555000002", "ლევან გელაშვილი", vehicle=truck(plate="TB-777-AA"))
+    stranger = client_for("shipper", "555000003")
+    load = shipper.post("/api/loads", json=load_body()).json()
+    assert shipper.get(f"/api/loads/{load['id']}/order.pdf").status_code == 400    # no driver booked yet
+    offer = driver.post(f"/api/loads/{load['id']}/offers", json={"price_gel": 905}).json()
+    shipper.post(f"/api/offers/{offer['id']}/accept")
+
+    for side in (shipper, driver):
+        r = side.get(f"/api/loads/{load['id']}/order.pdf")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and r.content[:5] == b"%PDF-"
+    text = PdfReader(io.BytesIO(r.content)).pages[0].extract_text()
+    for wanted in ("გადაზიდვის შეკვეთა", f"KG-{load['id']:06d}", "ნინო ბერიძე", "ლევან გელაშვილი", "TB-777-AA", "905",
+                   "თბილისი", "ბათუმი"):
+        assert wanted in text, wanted
+    assert len(PdfReader(io.BytesIO(r.content)).pages) == 1
+    assert stranger.get(f"/api/loads/{load['id']}/order.pdf").status_code == 404

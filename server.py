@@ -222,6 +222,20 @@ def offer_accept(offer_id: int, user=Depends(shipper)):
     return result
 
 
+# ---------------------------------------------------------------- the transport order (both sides, once booked)
+
+@app.get("/api/loads/{load_id}/order.pdf")
+def transport_order_pdf(load_id: int, user=Depends(current_user)):
+    """ტვირთის გადაზიდვის შეკვეთა: the platform's own agreement document, made from the database on every request,
+    for the load's shipper and driver only."""
+    import transport_order
+    data = mp.order_data(user["id"], load_id)
+    if "error" in data:
+        raise HTTPException(404 if data["error_code"] == "not_your_load" else 400, data["error"])
+    return Response(transport_order.render(data), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{data["number"]}.pdf"'})
+
+
 # ---------------------------------------------------------------- ratings (both sides, after delivery)
 
 class RateIn(BaseModel):

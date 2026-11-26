@@ -7,3 +7,6 @@ python-multipart==0.0.33
 langchain-core==1.8.0
 pypdf==7.1.0
 numpy==2.5.4
+fpdf2==2.9.0
+fonttools==4.69.1
+pillow==13.0.0

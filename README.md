@@ -27,7 +27,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 copy .env.example .env          # then put your GEMINI_API_KEY in .env
 uvicorn server:app              # http://127.0.0.1:8000
-pytest                          # 78 tests, no Gemini key needed (includes the eval self-test)
+pytest                          # 79 tests, no Gemini key needed (includes the eval self-test)
 ```
 
 On the first start with an empty database, the server creates **simulated demo accounts**. Shippers have the
@@ -45,6 +45,7 @@ work; the chat says the AI is off.
 | AI | `ai/engine.py` (Gemini loop, from logimind-ai), `ai/shipper.py` and `ai/driver.py` (each role's tools and prompt), `ai/common.py` (labels, the date / price / weight guards) |
 | Paperwork | `paperwork/` (from logimind-ai: classify, extract, validate, cross-check, draft, RAG), `demo_documents/` (simulated) |
 | Checks | `number_check.py`, `deadline.py`, `tests/`, `evals/run_paperwork_eval.py` |
+| Documents the site makes | `transport_order.py` (the ტვირთის გადაზიდვის შეკვეთა PDF once a driver is booked), `static/fonts/` (Noto, OFL) |
 | Demo data | `seed_demo.py` |
 
 ## Data: real vs simulated

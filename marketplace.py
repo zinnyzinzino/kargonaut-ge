@@ -451,8 +451,9 @@ def accept_offer(shipper_id, offer_id):
         conn.execute("UPDATE offers SET status = 'accepted' WHERE id = ?", (offer_id,))
         conn.execute("UPDATE offers SET status = 'declined' WHERE load_id = ? AND id != ? AND status = 'pending'",
                      (load["id"], offer_id))
-        conn.execute("UPDATE loads SET status = 'booked', driver_id = ?, vehicle_id = ?, agreed_price_gel = ? "
-                     "WHERE id = ?", (offer["driver_id"], offer["vehicle_id"], offer["price_gel"], load["id"]))
+        conn.execute("UPDATE loads SET status = 'booked', driver_id = ?, vehicle_id = ?, agreed_price_gel = ?, "
+                     "booked_at = datetime('now') WHERE id = ?",
+                     (offer["driver_id"], offer["vehicle_id"], offer["price_gel"], load["id"]))
     return load_view(get_load(load["id"]), get_user(shipper_id))
 
 
@@ -500,6 +501,35 @@ def rate(user_id, load_id, stars, comment=""):
     db.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",
                (load_id, user_id, other, int(n), (comment or "").strip()[:300] or None))
     return {"ok": True, "load_id": load_id, "stars": int(n), "rated_user": rating_summary(other)}
+
+
+# ---------------------------------------------------------------- the transport order (გადაზიდვის შეკვეთა)
+
+
+def order_number(load_id):
+    return f"KG-{int(load_id):06d}"
+
+
+def order_data(user_id, load_id):
+    """Everything the transport order shows, for the load's shipper and driver only, once a driver is booked.
+    Georgian freight has no standard rate-confirmation form, so the platform writes the agreement itself from what
+    both sides agreed on it (transport_order.py renders it)."""
+    load = get_load(load_id)
+    if not load or user_id not in (load["shipper_id"], load.get("driver_id")):
+        return refuse("not_your_load", "ეს ტვირთი თქვენს ანგარიშზე არ არის.")
+    if load["status"] not in ("booked", "in_transit", "delivered"):
+        return refuse("not_booked", "გადაზიდვის შეკვეთა მზადდება მას შემდეგ, რაც გამგზავნი შეთავაზებას მიიღებს.")
+    shipper, driver = get_user(load["shipper_id"]), get_user(load["driver_id"])
+    vehicle = db.one("SELECT * FROM vehicles WHERE id = ?", (load["vehicle_id"],))
+    return {
+        "number": order_number(load_id),
+        "date": (load.get("booked_at") or load["created_at"])[:10],
+        "load": load_view(load),
+        "shipper": public_user(shipper, with_phone=True),
+        "driver": public_user(driver, with_phone=True),
+        "vehicle": vehicle_view(vehicle) if vehicle else None,
+        "simulated": bool(shipper.get("is_demo") or driver.get("is_demo")),
+    }
 
 
 # ---------------------------------------------------------------- proof of delivery
