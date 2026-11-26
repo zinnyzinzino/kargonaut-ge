@@ -62,3 +62,7 @@ loosen a check to make a failing agent pass.
   loads, not 4): **20/21**, 61 Gemini calls (`2026-11-27_0128`). The one fail, `driver-return-trip`, recommended
   the right load with the right numbers but wrote "ტვირთის ID: 10", which the check doesn't read as №10; re-run
   3/3 PASS. Check left as it is: "ID" isn't how the reply should name a load.
+- 27 Nov, the chat now asks for addresses before a draft and may give drivers' phones (the map shows them):
+  `draft-full-confirm` got an address turn, `vehicles-nearby` lost its "no phone" check. The affected cases 5/5
+  (`2026-11-27_0202`); a reply said "a draft was prepared" while asking, so the tool now says `draft_made: false`,
+  re-run 2/2 PASS with honest replies (`2026-11-27_0203`, `_0204`).

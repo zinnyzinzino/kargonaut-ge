@@ -31,6 +31,21 @@ COOKIE = "kargonaut_session"
 STARTED = time.time()
 
 
+def _ai_log(kind, user, **data):
+    """One line per AI exchange in data/ai_log.jsonl (next to the database, git-ignored, never sent anywhere): what
+    the user wrote, what the model answered or called, what Python kept. 27 Nov: a load was posted as Box truck and
+    dangerous goods and nothing showed why. Never breaks a request."""
+    import json
+    from datetime import datetime
+    try:
+        line = {"at": datetime.now().isoformat(timespec="seconds"), "kind": kind,
+                "user_id": user["id"], "role": user["role"], **data}
+        with open(db.db_path().parent / "ai_log.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False, default=str) + "\n")
+    except Exception as exc:   # a log must never cost the user their answer
+        _log(f"ai log not written: {type(exc).__name__}")
+
+
 def _log(text):
     """Progress lines in the server's terminal; never fails on a Georgian file name in a cp1252 console."""
     line = f"   · {text}"
@@ -415,6 +430,9 @@ def chat(body: ChatIn, user=Depends(current_user)):
     result = _assistant(user).ask(message)
     if not result.get("ai_available"):
         _log(f"AI unavailable: {result.get('error', '')[:300]}")
+    _ai_log("chat", user, message=message, reply=result.get("reply"), model=result.get("model"),
+            tools=[{"tool": c.get("tool"), "args": c.get("args")} for c in result.get("tool_calls", [])],
+            drafts=[d.get("draft") for d in result.get("drafts", [])], error=result.get("error"))
     return result
 
 
@@ -457,7 +475,11 @@ def understand_load(text: str = Form(""), audio: UploadFile | None = File(None),
         result = read(text, reader)
     except ReadingFailed as exc:
         _log(f"understand: AI unavailable: {str(exc)[:300]}")
+        _ai_log("describe_load", user, text=text, transcript=transcript, error=str(exc)[:300])
         raise HTTPException(503, "AI ახლა ვერ პასუხობს: სცადეთ ცოტა ხანში ან შეავსეთ ფორმა ხელით.")
+    ai_answer = result.pop("ai_answer", None)
+    _ai_log("describe_load", user, text=text, transcript=transcript, ai_answer=ai_answer,
+            kept=result["values"], notes=result["notes"], model=result.get("model"))
     return {**result, "transcript": transcript}
 
 

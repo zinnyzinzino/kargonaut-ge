@@ -171,9 +171,15 @@ GOOD = {
     "ზუგდიდიდან": [say("ზუგდიდი ჯერ ჩვენს ქალაქებში არ არის. ჩვენ ვმუშაობთ ამ ქალაქებს შორის: თბილისი, ქუთაისი, ბათუმი, "
                        "ფოთი, ზესტაფონი, სამტრედია, გორი, რუსთავი. რომელი გაწყობთ?")],
     "ავეჯი უნდა გავგზავნო, Box truck, 500": [say("როდის უნდა აიღონ ტვირთი? მითხარით აღების თარიღი და მონახაზს მოგიმზადებთ.")],
+    # 27 Nov: without addresses the tool asks for them first; the next turn gives them and the draft is made
     "ხვალ თბილისიდან ბათუმში 3 ტონა": [call("propose_load", {
         "origin_city": "თბილისი", "destination_city": "ბათუმი", "truck_type": "Box truck", "weight_kg": 3000,
-        "pickup_date": TOMORROW, "pickup_date_words": "ხვალ", "price_gel": 500, "cargo": "ავეჯი"}), say(draft_answer)],
+        "pickup_date": TOMORROW, "pickup_date_words": "ხვალ", "price_gel": 500, "cargo": "ავეჯი"}),
+        say(lambda c: c.last["ask_user"])],
+    "აღება ჭავჭავაძის 10-დან": [call("propose_load", {
+        "origin_city": "თბილისი", "destination_city": "ბათუმი", "truck_type": "Box truck", "weight_kg": 3000,
+        "pickup_date": TOMORROW, "pickup_date_words": "ხვალ", "price_gel": 500, "cargo": "ავეჯი",
+        "pickup_address": "ჭავჭავაძის 10", "delivery_address": "გორგასლის 5"}), say(draft_answer)],
     "რამდენი ტვირთი მაქვს ახლა ღია": [call("my_loads", {"status": "open"}), say(open_count)],
     "რძის პროდუქტები": [call("propose_load", {"origin_city": "Kutaisi", "destination_city": "Tbilisi",
                                               "truck_type": "Refrigerated", "weight_kg": 8000, "pickup_date": IN_2_DAYS,

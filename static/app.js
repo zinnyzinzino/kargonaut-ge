@@ -25,9 +25,11 @@ const askBtn = (question, label) => `<button type="button" class="ask-ai" data-a
 const loadFacts = (l) => `${cityLabel(l.origin_city)} → ${cityLabel(l.destination_city)}, ${typeLabel(l.truck_type)}, ` +
   `${Math.round(l.weight_kg)} კგ, ${Math.round(l.agreed_price_gel ?? l.price_gel)} ₾` +
   (l.deliver_by ? `, მიტანა ${l.deliver_by}-მდე` : "");
-// The deadline under a load's pickup date, wherever a load is listed
-const deadlineLine = (l) => l.deliver_by
-  ? `<div class="line deadline"><span class="ico">⏱</span><span>მიტანა <b class="num">${esc(l.deliver_by)}</b>-მდე</span></div>` : "";
+// A load's delivery deadline in a list. underDelivery: in the shipper's list, under its „მიტანა“ heading (shown like
+// the pickup date); elsewhere (no headings) a full line „მიტანა … -მდე“
+const deadlineLine = (l, underDelivery = false) => !l.deliver_by ? "" : underDelivery
+  ? `<div class="line deadline"><span class="ico date"></span><span class="num">${esc(l.deliver_by)}-მდე</span></div>`
+  : `<div class="line deadline"><span class="ico">⏱</span><span>მიტანა <b class="num">${esc(l.deliver_by)}</b>-მდე</span></div>`;
 const cityLabel = (code) => (S.meta.cities.find((c) => c.name === code) || {}).label || code;
 const typeLabel = (code) => (S.meta.truck_types.find((t) => t.code === code) || {}).label || code;
 
@@ -330,8 +332,14 @@ function wirePills(root, rerender) {
   $$(".pill", root).forEach((p) => p.onclick = () => { S.filter = p.dataset.filter; rerender(); });
 }
 
-// A map of loads: a line per load (pickup -> delivery), a badge per city with how many loads start there
-function drawMap(el, loads, colorOf, popupOf) {
+// Which side of its city a label sits on, so close neighbours don't cover each other (Tbilisi/Rustavi are 25 km
+// apart, Samtredia/Kutaisi/Zestafoni in a row); a small dot marks the city's exact spot
+const LABEL_SIDE = { Tbilisi: "above", Rustavi: "below", Kutaisi: "above", Samtredia: "below", Zestafoni: "right",
+                     Poti: "above", Batumi: "below", Gori: "right" };   // the coast cities' labels never off the map's edge
+
+// A map of loads: a line per load (pickup -> delivery) and one label per city: how many loads start there and,
+// on the shipper's map (trucks given), how many free trucks are there (click: the trucks and drivers' phones)
+function drawMap(el, loads, colorOf, popupOf, trucks = null) {
   if (S.map) { S.map.remove(); S.map = null; }
   S.map = L.map(el, { zoomSnap: 0.25 });
   S.map.fitBounds(S.meta.cities.map((c) => [c.lat, c.lng]), { padding: [40, 40] });   // Georgia, not the region
@@ -344,36 +352,35 @@ function drawMap(el, loads, colorOf, popupOf) {
     const mid = [(a[0] + b[0]) / 2 + bend, (a[1] + b[1]) / 2 - bend];
     L.polyline([a, mid, b], { color: colorOf(l), weight: 4, opacity: .85 }).bindPopup(popupOf(l)).addTo(S.map);
   });
+  const byCity = {};
+  (trucks || []).forEach((t) => (byCity[t.city] = byCity[t.city] || []).push(t));
   S.meta.cities.forEach((c) => {
-    const n = loads.filter((l) => l.origin_city === c.name).length;
-    L.marker([c.lat, c.lng], { icon: L.divIcon({ className: "city-pin",
-      html: `<div class="city-dot ${n ? "has" : ""}" title="${esc(c.label)}">${esc(c.label)}${n ? " · " + n : ""}</div>` }) }).addTo(S.map);
+    const n = loads.filter((l) => l.origin_city === c.name).length, free = byCity[c.name] || [];
+    const quiet = !n && !free.length;   // nothing here: just the dot, the name on hover
+    const label = quiet ? "" : `<div class="city-dot ${n ? "has" : ""} side-${LABEL_SIDE[c.name] || "above"}">
+      ${esc(c.label)}${n ? " · " + n : ""}${free.length ? `<span class="trucks">🚚 ${free.length}</span>` : ""}</div>`;
+    const marker = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: "city-pin", iconSize: [0, 0],
+      html: `<span class="pt ${quiet ? "quiet" : ""}" title="${esc(c.label)}"></span>${label}` }) }).addTo(S.map);
+    if (free.length) marker.bindPopup(freeTrucksPopup(c, free), { maxWidth: 320 });
   });
-  setTimeout(() => S.map && S.map.invalidateSize(), 50);
+  const compact = () => el.classList.toggle("map-compact", S.map.getZoom() < 7.75);   // a small map: smaller labels
+  S.map.on("zoomend", compact);
+  compact();
+  setTimeout(() => S.map && (S.map.invalidateSize(), compact()), 50);
 }
 
-// Free trucks on the shipper's map: a badge under each city with how many, a popup with each truck and its
-// driver's phone (drivers are told on the form that this is shown)
+// Free trucks in one city (the shipper's map): each truck and its driver's phone (drivers are told on the form)
 const truckSize = (v) => {
   const parts = [v.length_m, v.width_m, v.height_m];
   if (!parts[0] && !parts[1] && !parts[2]) return "";
   return parts.map((x) => (x ? String(x).replace(".", ",") : "?")).join(" × ") + " მ";
 };
-function addFreeTrucks(map, trucks) {
-  const byCity = {};
-  trucks.forEach((t) => (byCity[t.city] = byCity[t.city] || []).push(t));
-  S.meta.cities.forEach((c) => {
-    const here = byCity[c.name];
-    if (!here) return;
-    const list = here.map((t) => `<div class="free-truck"><b>${esc(t.truck_label)}</b> · ${fmt(t.capacity_kg)} კგ
-        ${truckSize(t) ? ` · ${truckSize(t)}` : ""}${t.liftgate ? " · ჰიდრ. ბორტი" : ""}${t.hazmat ? " · სახიფათო" : ""}
-      <div>${esc(t.driver_name)} ${stars(t.driver_rating)}${t.driver_is_demo ? ` <span class="muted">· სიმულაცია</span>` : ""}</div>
-      <div>☎ <a href="tel:+995${esc(t.driver_phone)}">${esc(t.driver_phone)}</a></div></div>`).join("");
-    L.marker([c.lat, c.lng], { icon: L.divIcon({ className: "city-pin",
-      html: `<div class="truck-dot" title="თავისუფალი მანქანები">🚚 ${here.length}</div>` }) })
-      .bindPopup(`<b>${esc(c.label)} · თავისუფალი მანქანები (${here.length})</b>${list}`, { maxWidth: 320 })
-      .addTo(map);
-  });
+function freeTrucksPopup(c, here) {
+  const list = here.map((t) => `<div class="free-truck"><b>${esc(t.truck_label)}</b> · ${fmt(t.capacity_kg)} კგ
+      ${truckSize(t) ? ` · ${truckSize(t)}` : ""}${t.liftgate ? " · ჰიდრ. ბორტი" : ""}${t.hazmat ? " · სახიფათო" : ""}
+    <div>${esc(t.driver_name)} ${stars(t.driver_rating)}${t.driver_is_demo ? ` <span class="muted">· სიმულაცია</span>` : ""}</div>
+    <div>☎ <a href="tel:+995${esc(t.driver_phone)}">${esc(t.driver_phone)}</a></div></div>`).join("");
+  return `<b>${esc(c.label)} · თავისუფალი მანქანები (${here.length})</b>${list}`;
 }
 
 // ---------------------------------------------------------------- shipper: my loads (the board)
@@ -417,10 +424,10 @@ async function renderShipperLoads() {
     search.oninput = () => { S.search = search.value; draw(); search.focus(); search.setSelectionRange(9999, 9999); };
     if (S.mode === "map") {
       drawMap($("#board-map"), shown, shipColor, (l) => `<b>№${l.id} · ${esc(l.origin_label)} → ${esc(l.destination_label)}</b><br>
-        ${esc(l.status_label)} · ${esc(l.truck_label)} · ${fmt(l.weight_kg)} კგ<br>ფასი ${gel(l.agreed_price_gel ?? l.price_gel)}`);
-      addFreeTrucks(S.map, trucks);
-      $("#board-map").insertAdjacentHTML("afterend", `<p class="muted small map-note">🚚 = თავისუფალი მანქანები ქალაქში
-        (სულ ${trucks.length}). დააჭირეთ: მანქანა, ზომები და მძღოლის ნომერი.</p>`);
+        ${esc(l.status_label)} · ${esc(l.truck_label)} · ${fmt(l.weight_kg)} კგ<br>ფასი ${gel(l.agreed_price_gel ?? l.price_gel)}`,
+        trucks);
+      $("#board-map").insertAdjacentHTML("afterend", `<p class="muted small map-note">ქალაქი · N = თქვენი ტვირთები იქიდან;
+        🚚 N = თავისუფალი მანქანები (სულ ${trucks.length}). დააჭირეთ ქალაქს: მანქანა, ზომები და მძღოლის ნომერი.</p>`);
       return;
     }
     $$(".board-row", view).forEach((row) => row.onclick = (e) => {
@@ -454,9 +461,9 @@ function shipperRow(l) {
       ${l.needs_liftgate ? `<div><span class="chip">ჰიდრ. ბორტი</span></div>` : ""}${l.hazmat ? `<div><span class="chip bad">სახიფათო</span></div>` : ""}</div>
     <div><div class="label-sm">აღება</div>
       <div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
-      <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div>${deadlineLine(l)}
+      <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div>
       <div class="label-sm" style="margin-top:6px">მიტანა</div>
-      <div class="line"><span class="ico drop"></span><span>${esc(l.destination_label)}${l.delivery_address ? ", " + esc(l.delivery_address) : ""}</span></div>
+      <div class="line"><span class="ico drop"></span><span>${esc(l.destination_label)}${l.delivery_address ? ", " + esc(l.delivery_address) : ""}</span></div>${deadlineLine(l, true)}
       <div class="muted small">${l.loaded_km ? fmt(l.loaded_km) + " კმ · " : ""}${esc(l.truck_label)}</div></div>
     <div>${driver}</div>
     <div><div class="money num">${gel(l.agreed_price_gel ?? l.price_gel)}</div>
@@ -1117,7 +1124,9 @@ function draftCard(d) {
   const x = d.draft;
   const rows = d.kind === "load"
     ? [["მარშრუტი", `${x.origin_label} → ${x.destination_label}`], ["მანქანა", x.truck_label], ["წონა", `${fmt(x.weight_kg)} კგ`],
-       ["აღება", x.pickup_date], ["ფასი", gel(x.price_gel)], ["ტვირთი", x.cargo],
+       ["აღება", [x.pickup_date, x.pickup_address].filter(Boolean).join(", ")],
+       ["მიტანა", [x.deliver_by ? `${x.deliver_by}-მდე` : "", x.delivery_address].filter(Boolean).join(", ") || null],
+       ["ფასი", gel(x.price_gel)], ["ტვირთი", x.cargo], ["სახიფათო", x.hazmat ? "დიახ" : null],
        ["სამართლიანი", d.price_check ? `${gel(d.price_check.fair_price_range_gel[0])} – ${gel(d.price_check.fair_price_range_gel[1])} · ${d.price_check.verdict_label}` : null]]
     : [["ტვირთი", `№${x.load_id}: ${x.route}`], ["აღება", x.pickup_date], ["მანქანა", x.truck_label],
        ["თქვენი ფასი", gel(x.price_gel)], ["გამგზავნის ფასი", gel(x.shipper_price_gel)],

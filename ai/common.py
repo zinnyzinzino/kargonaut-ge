@@ -76,6 +76,29 @@ def number_said(value, said_text, tons=False):
     return any(abs(x - n) < 0.5 or (tons and abs(x - n * 1000) < 0.5) for n in said)
 
 
+def words_said(value, said_text):
+    """True if most of the words of `value` (an address) are in what the user wrote. Georgian adds endings
+    ("რუსთაველის", "რუსთაველზე"), so a word counts when its first 4 letters begin one of the user's words."""
+    words = [w for w in re.findall(r"\w+", str(value or "").lower()) if len(w) >= 3 or w.isdigit()]
+    said = re.findall(r"\w+", (said_text or "").lower())
+    if not words:
+        return False
+    found = sum(1 for w in words if any(s.startswith(w[:4]) for s in said))
+    return found >= max(1, round(len(words) * 0.6))
+
+
+HAZMAT_WORDS = ("სახიფათ", "საშიშ", "აალებად", "ფეთქებ", "ბალონ", "გაზ", "საწვავ", "ბენზინ", "დიზელ", "ქიმი",
+                "მჟავ", "ტოქსიკ", "რადიოაქტ", "adr", "hazmat", "hazardous", "dangerous", "flammable", "explosive",
+                "gas cylinder", "fuel", "chemical")
+
+
+def hazmat_said(said_text):
+    """True if the user's words name dangerous goods. 27 Nov: a furniture load was posted as dangerous goods;
+    the model's yes alone no longer marks a load hazardous."""
+    low = (said_text or "").lower()
+    return any(w in low for w in HAZMAT_WORDS)
+
+
 def run_tool(tools_by_name, name, args, user, said_text=None, guards=None):
     """Run one tool for this user. Never raises: problems come back as data the model can explain.
     said_text: everything the user typed in the remembered conversation (the guards check against it).

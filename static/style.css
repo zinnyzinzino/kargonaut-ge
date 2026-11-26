@@ -266,15 +266,28 @@ a { color: var(--gold); }
 .leaflet-control-attribution { background: rgba(9,14,20,.8) !important; color: var(--muted); }
 .leaflet-control-attribution a { color: var(--muted); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface-2); color: var(--text); }
-.city-pin { position: relative; width: 0; height: 0; }
-.city-dot { position: absolute; transform: translate(-50%, -50%); min-width: 30px; height: 28px; border-radius: 14px; padding: 0 9px;
+/* A map label's anchor: no size, and Leaflet's own position:absolute (a "position: relative" here put the markers
+   in the page flow, so each one sat lower than the one before: the labels drifted south, 27 Nov) */
+.city-pin { width: 0; height: 0; }
+/* the city's exact spot */
+.city-pin .pt { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: var(--gold); border: 2px solid #05080C; box-shadow: 0 0 0 1px var(--gold); }
+.city-pin .pt.quiet { background: var(--surface-3); box-shadow: 0 0 0 1px var(--muted); }
+/* its label, on one side of the dot (LABEL_SIDE in app.js) */
+.city-dot { position: absolute; height: 26px; border-radius: 13px; padding: 0 9px; gap: 6px;
   background: var(--surface); color: var(--text); border: 2px solid var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,.5);
-  display: grid; place-items: center; font-weight: 700; font-size: 12px; white-space: nowrap; }
+  display: flex; align-items: center; font-weight: 700; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.city-dot.side-above { transform: translate(-50%, calc(-100% - 8px)); }
+.city-dot.side-below { transform: translate(-50%, 8px); }
+.city-dot.side-left { transform: translate(calc(-100% - 9px), -50%); }
+.city-dot.side-right { transform: translate(9px, -50%); }
 .city-dot.has { background: var(--gold); color: var(--gold-ink); }
-/* free trucks: a badge just under the city's name */
-.truck-dot { position: absolute; transform: translate(-50%, 18px); height: 22px; border-radius: 11px; padding: 0 8px;
-  background: var(--surface-3); color: var(--text); border: 1px solid var(--go); font-size: 11px; font-weight: 700;
-  display: grid; place-items: center; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+/* free trucks in the city, inside its label */
+.city-dot .trucks { background: var(--surface-3); color: var(--text); border: 1px solid var(--go); border-radius: 9px;
+  padding: 0 6px; font-size: 11px; line-height: 16px; }
+/* a small map (zoomed out): smaller labels */
+.map-compact .city-dot { height: 20px; padding: 0 6px; font-size: 10px; gap: 4px; border-width: 1.5px; }
+.map-compact .city-dot .trucks { font-size: 10px; line-height: 13px; padding: 0 4px; }
 .free-truck { border-top: 1px solid var(--line); padding: 6px 0; margin-top: 6px; font-size: 13px; line-height: 1.5; }
 .free-truck a { color: var(--gold); }
 .map-note { margin: 8px 2px 0; }
@@ -315,6 +328,7 @@ a { color: var(--gold); }
 
 /* a load's delivery deadline, and an offer that can't make it */
 .line.deadline { color: var(--gold); font-size: 13px; }
+.line.deadline .ico.date::before { border-color: var(--gold); }
 .offers-table tr.late td { opacity: .8; }
 .offers-table tr.late .money { text-decoration: line-through; text-decoration-color: var(--loss); }
 

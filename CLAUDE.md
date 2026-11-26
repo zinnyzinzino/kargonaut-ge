@@ -70,6 +70,13 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   მერაბ 810 ₾ is booked that day (load 21, Zestafoni -> Batumi) so ირაკლი 910 ₾ is recommended. The transport order
   prints the deadline and a BLANK late-delivery penalty (პირგასამტეხლო) line. No on-time history yet: „მივიტანე“'s
   time vs deliver_by is the data to collect for that.
+- Chat drafts (27 Nov): `propose_load` asks for the pickup and delivery addresses before drafting (unless
+  `addresses_later`); addresses the user never wrote (`words_said`) and dangerous goods they never named
+  (`hazmat_said`, also in the describe box) are dropped by Python. The draft card shows addresses and the deadline.
+  `available_vehicles` = the map's list (`mp.free_vehicles`: free and not on a booked trip) WITH drivers' names and
+  phones (the user's decision; the map already shows them).
+- AI log (27 Nov): every chat turn and describe-a-load reading -> `data/ai_log.jsonl` (git-ignored; describe keeps
+  the model's raw answer before Python's checks). Look there first when "the AI did something odd".
 - Ratings: after delivery each side rates the other once, 1-5 stars (`marketplace.rate`, table `ratings`). Averages show
   on offers, on the driver's load board and in the header. The offer ranking is still price first, then distance.
 - Proof of delivery: „მივიტანე“ (in_transit -> delivered) needs the signed paper (`POST /api/jobs/{id}/deliver`). The

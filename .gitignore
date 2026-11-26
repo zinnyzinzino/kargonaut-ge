@@ -13,3 +13,4 @@ data/pod/
 documents/*
 !documents/README.md
 evals/results/
+data/ai_log.jsonl

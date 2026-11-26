@@ -34,12 +34,16 @@
     },
     {
       "id": "draft-full-confirm", "category": "drafts", "as": "shipper",
-      "origin": "Everything given: a draft (not a posted load), then the user's Confirm, then the assistant knows",
+      "origin": "Everything but the addresses: the assistant asks for them (27 Nov, the user's request), then a draft (not a posted load), then the user's Confirm, then the assistant knows",
       "turns": [
         {"say": "ხვალ თბილისიდან ბათუმში 3 ტონა ავეჯი უნდა გავგზავნო, Box truck-ით, 500 ლარად", "expect": {
           "tools_called": ["propose_load"],
           "tool_args": {"propose_load": {"origin_city": "Tbilisi", "destination_city": "Batumi", "truck_type": "box_truck",
                                          "weight_kg": 3000, "pickup_date": "{today+1}", "price_gel": 500}},
+          "no_draft": true, "asks_question": true, "reply_matches": ["მისამართ|სად"],
+          "numbers_grounded": true}},
+        {"say": "აღება ჭავჭავაძის 10-დან, მიტანა გორგასლის 5-ზე", "expect": {
+          "tools_called": ["propose_load"],
           "draft_fields": {"draft.origin_city": "Tbilisi", "draft.destination_city": "Batumi", "draft.weight_kg": 3000,
                            "draft.price_gel": 500, "draft.pickup_date": "{today+1}"},
           "reply_matches": ["დადასტურ"], "reply_not_matches": ["გამოქვეყნდა|დაემატა|შევინახე"],
@@ -88,11 +92,11 @@
     },
     {
       "id": "vehicles-nearby", "category": "vehicles", "as": "shipper",
-      "origin": "Free vehicles near a city: counts and distances, never a driver's phone",
+      "origin": "Free vehicles near a city: counts and distances; since 27 Nov drivers' phones may be given (the map shows them), but only real ones from the tool (numbers_grounded)",
       "turns": [{"say": "ქუთაისში არის თავისუფალი მანქანები 3 ტონისთვის?", "expect": {
         "tools_called": ["available_vehicles"],
         "tool_args": {"available_vehicles": {"city_name": "Kutaisi", "weight_kg": 3000}},
-        "reply_not_contains": ["5990000"], "numbers_grounded": true}}]
+        "numbers_grounded": true}}]
     },
     {
       "id": "english-input", "category": "language", "as": "shipper",

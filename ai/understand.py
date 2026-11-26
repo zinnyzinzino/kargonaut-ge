@@ -15,7 +15,7 @@ import os
 import re
 from datetime import date, timedelta
 
-from ai.common import date_said, number_said
+from ai.common import date_said, hazmat_said, number_said
 from core.geo import CITIES, CITY_KA, CITY_STEMS_KA, city
 from core.pricing import compare_types
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES, TRUCK_WORDS_KA, truck_type
@@ -215,9 +215,10 @@ def check(answer, text, today=None):
     for field in ("cargo", "pickup_address", "delivery_address", "notes"):
         if a[field] and str(a[field]).strip():
             values[field] = str(a[field]).strip()[:200]
-    for flag in ("needs_liftgate", "hazmat"):
-        if a[flag] is True:
-            values[flag] = True
+    if a["needs_liftgate"] is True:
+        values["needs_liftgate"] = True
+    if a["hazmat"] is True and hazmat_said(text):   # the model's yes alone isn't enough (ai/common.py)
+        values["hazmat"] = True
 
     missing = [f for f in REQUIRED if f not in values]
     if "price_gel" in missing and all(values.get(f) for f in ("origin_city", "destination_city", "truck_type")):
@@ -234,7 +235,8 @@ def read(text, reader, today=None):
     weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][today.weekday()]
     prompt = PROMPT.format(cities=", ".join(CITIES), today=today.isoformat(), weekday=weekday, text=text)
     answer, meta = reader.generate([prompt], SCHEMA, label="describe load")
-    return {**check(answer, text, today), "model": meta.get("model")}
+    # ai_answer: what the model said before Python's checks (the server logs it, then drops it from the reply)
+    return {**check(answer, text, today), "model": meta.get("model"), "ai_answer": answer}
 
 
 def transcribe(audio, mime_type, reader):

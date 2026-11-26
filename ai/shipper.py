@@ -4,13 +4,12 @@ Docstrings are prompts: Gemini reads them to choose a tool. Every number comes f
 database. The only tool that leads to a change is propose_load, and it makes a DRAFT the user confirms.
 Accepting a driver's offer is a button on the site, never a tool.
 """
-from ai.common import date_said, me, needs_input, number_said
+from ai.common import date_said, hazmat_said, me, needs_input, number_said, words_said
 from core.geo import CITY_KA, approach_leg, city
 from core.matching import compatibility_issues
 from core.pricing import compare_types, fair_price
 from core.vehicles import TRUCK_TYPES_TEXT, truck_type
 
-import db
 import marketplace
 
 
@@ -51,10 +50,10 @@ def _type(value):
 
 
 def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int = 0) -> dict:
-    """How many free registered vehicles could take a load picked up in this city, and how far the nearest are.
-    Use for "are there trucks in Kutaisi?", "how soon could someone come?". This result has no names or phone
-    numbers and you never give one: the free trucks with their drivers' numbers are on the site's map
-    („ჩემი ტვირთები“ → „რუკა“); point the user there."""
+    """Free trucks that could take a load picked up in this city, nearest first, with each driver's name and phone
+    (the same list as the site's map: marked free, not on a booked trip). Use for "are there trucks in Kutaisi?",
+    "how soon could someone come?", "give me a driver's number". Give names and phones only from this result,
+    exactly as written; a driver still has to offer on the load (or the user calls them)."""
     where = city(city_name)
     if not where:
         return needs_input(["city_name"], "რომელი ქალაქიდან უნდა აიღონ ტვირთი?")
@@ -63,24 +62,27 @@ def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int
         return {"error": f"Unknown truck type '{truck_type}'. Known: {TRUCK_TYPES_TEXT}."}
     load = {"truck_type": kind, "weight_kg": int(weight_kg or 0)}
     found = []
-    for v in db.rows("SELECT * FROM vehicles WHERE available = 1"):
+    for v in marketplace.free_vehicles():   # 27 Nov: was every truck marked free, booked ones too (unlike the map)
         if kind and compatibility_issues(v, {**load, "truck_type": kind}):
             continue
         if not kind and v["capacity_kg"] < load["weight_kg"]:
             continue
         leg = approach_leg(v["city"], where)
         found.append({"truck_type": v["truck_type"], "capacity_kg": v["capacity_kg"], "city": v["city"],
-                      "km_to_pickup": leg["distance_km"], "minutes_to_pickup": leg["duration_minutes"]})
+                      "km_to_pickup": leg["distance_km"], "minutes_to_pickup": leg["duration_minutes"],
+                      "driver_name": v["driver_name"], "driver_phone": v["driver_phone"],
+                      "driver_rating": v["driver_rating"], "simulated_demo_driver": v["driver_is_demo"]})
     found.sort(key=lambda f: f["km_to_pickup"])
     return {"pickup_city": where, "truck_type": kind, "weight_kg": load["weight_kg"] or None,
             "available_vehicles": len(found), "nearest": found[:5],
-            "note": "Registered vehicles marked free by their drivers; a driver still has to offer on the load."}
+            "note": "Trucks marked free by their drivers and not on a booked trip; also on the site's map."}
 
 
 def propose_load(origin_city: str, destination_city: str, truck_type: str = "", weight_kg: int = 0,
                  pickup_date: str = "", pickup_date_words: str = "", price_gel: float = 0, cargo: str = "",
                  pieces: int = 0, needs_liftgate: bool = False, hazmat: bool = False, notes: str = "",
-                 replaces_draft_id: str = "", deliver_by: str = "", deliver_by_words: str = "") -> dict:
+                 replaces_draft_id: str = "", deliver_by: str = "", deliver_by_words: str = "",
+                 pickup_address: str = "", delivery_address: str = "", addresses_later: bool = False) -> dict:
     """Prepare a DRAFT of a new load for the user to post. Nothing is posted: the user presses
     "დადასტურება" (Confirm) on the draft card. Never say it was posted.
     Pass only values the user gave. pickup_date: YYYY-MM-DD, converted from the user's words; pickup_date_words:
@@ -89,12 +91,27 @@ def propose_load(origin_city: str, destination_city: str, truck_type: str = "", 
     user says "you set the price" ("ფასი შენ დააწესე"), never pass a price: give the fair range and ask which one.
     weight_kg in kilograms (5 ტონა = 5000). deliver_by: YYYY-MM-DD, only if the user says by when it must arrive
     ("პარასკევამდე უნდა ჩავიდეს"); deliver_by_words: their exact words for it. Offers are then checked against it.
+    pickup_address / delivery_address: street and number or a named place ("ფოთის პორტი"), as the user wrote them.
+    Without them the result asks for them: ask the user. addresses_later=true only if the user says they don't
+    know the address yet or will give it to the driver later.
     To change a draft that isn't confirmed yet, call again with ALL values and replaces_draft_id = the previous
     draft's draft_id."""
     values = {"origin_city": origin_city, "destination_city": destination_city, "truck_type": truck_type,
               "weight_kg": weight_kg or None, "pickup_date": pickup_date, "price_gel": price_gel or None,
               "cargo": cargo, "pieces": pieces, "needs_liftgate": needs_liftgate, "hazmat": hazmat, "notes": notes,
-              "deliver_by": deliver_by}
+              "deliver_by": deliver_by, "pickup_address": pickup_address, "delivery_address": delivery_address}
+    _, problem = marketplace.validate_load(values)
+    no_address = [f for f in ("pickup_address", "delivery_address") if not str(values[f] or "").strip()]
+    if not problem and no_address and not addresses_later:
+        # 27 Nov, the user: a draft without a delivery address isn't a load a driver can take; ask first
+        question = {("pickup_address", "delivery_address"): "სად უნდა აიღონ და სად მიიტანონ ტვირთი? (ქუჩა და "
+                    "ნომერი, ან ადგილი, მაგ. „ფოთის პორტი“). თუ ჯერ არ იცით, ასეც მითხარით.",
+                    ("pickup_address",): "სად უნდა აიღონ ტვირთი? (ქუჩა და ნომერი, ან ადგილი)",
+                    ("delivery_address",): "სად უნდა მიიტანონ ტვირთი? (ქუჩა და ნომერი, ან ადგილი)"}[tuple(no_address)]
+        return needs_input(no_address, question, draft_made=False,
+                           how_to_answer="NO draft exists yet: don't say one was prepared. Ask only for the "
+                                         "address(es). If the user doesn't know yet, call again with "
+                                         "addresses_later=true.")
     result = marketplace.draft_load(me()["id"], values, replaces=replaces_draft_id)
     if result.get("error_code") == "missing":
         ask = needs_input(result["fields"], result["error"])
@@ -142,6 +159,13 @@ def _guard_propose_load(args, said):
     if args.get("deliver_by") and not date_said(args["deliver_by"], args.get("deliver_by_words", ""), said):
         args["deliver_by"] = ""
         notes["deliver_by_rejected"] = "The user hasn't given a delivery deadline in their own words. Leave it out."
+    if args.get("hazmat") and not hazmat_said(said):
+        args["hazmat"] = False
+        notes["hazmat_rejected"] = "The user named no dangerous goods: the load is not marked dangerous."
+    for field in ("pickup_address", "delivery_address"):
+        if args.get(field) and not words_said(args[field], said):
+            args[field] = ""
+            notes[f"{field}_rejected"] = "The user hasn't written this address. Ask them."
     if args.get("weight_kg") and not number_said(args["weight_kg"], said, tons=True):
         args["weight_kg"] = 0
         notes["weight_rejected"] = "The user hasn't said this weight. Ask them."
