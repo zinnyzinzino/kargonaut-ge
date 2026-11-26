@@ -135,6 +135,7 @@ class RegisterIn(BaseModel):
     password: str
     city: str = ""
     legal_status: str = "person"
+    vehicle: dict = {}   # drivers: their truck (truck_type, capacity_kg, city, plate, ...), saved with the account
 
 
 class LoginIn(BaseModel):
@@ -149,7 +150,8 @@ def _set_cookie(response, token):
 
 @app.post("/api/register")
 def register(body: RegisterIn, response: Response):
-    _ok(mp.register(body.role, body.name, body.phone, body.password, body.city, body.legal_status))
+    _ok(mp.register(body.role, body.name, body.phone, body.password, body.city, body.legal_status,
+                    vehicle=body.vehicle))
     session = mp.login(body.phone, body.password)
     _set_cookie(response, session["token"])
     return session["user"]

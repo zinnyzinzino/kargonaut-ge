@@ -16,7 +16,7 @@ import uuid
 from datetime import date, timedelta
 
 import db
-from core.geo import CITIES, CITY_KA, city
+from core.geo import CITIES, CITY_KA, city, route
 from core.matching import best_vehicle_for_load, compatibility_issues, rank_loads_for_driver, rank_offers
 from core.pricing import fair_price
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES_TEXT, truck_type
@@ -84,7 +84,9 @@ def public_user(u, with_phone=False):
     return view
 
 
-def register(role, name, phone, password, city_name="", legal_status="person", is_demo=False):
+def register(role, name, phone, password, city_name="", legal_status="person", is_demo=False, vehicle=None):
+    """A new account. A driver registers WITH their truck (vehicle: truck_type, capacity_kg, city, plate, and
+    optionally fuel_l_per_100km, cost_per_km, liftgate, hazmat): both are saved together, or neither."""
     if role not in ROLES:
         return refuse("bad_role", "აირჩიეთ: ტვირთის გამგზავნი ან მძღოლი.")
     name = (name or "").strip()
@@ -100,9 +102,17 @@ def register(role, name, phone, password, city_name="", legal_status="person", i
     home = city(city_name) if city_name else None
     if db.one("SELECT id FROM users WHERE phone = ?", (number,)):
         return refuse("phone_taken", "ამ ნომრით ანგარიში უკვე არსებობს: შედით სისტემაში.")
-    user_id = db.execute(
-        "INSERT INTO users (role, name, phone, password_hash, city, legal_status, is_demo) VALUES (?,?,?,?,?,?,?)",
-        (role, name, number, hash_password(password), home, legal_status, int(is_demo)))
+    truck = None
+    if role == "driver":
+        truck, error = validate_vehicle(vehicle)
+        if error:
+            return error
+    with db.connect() as conn:   # one transaction: no driver account without its truck
+        user_id = conn.execute(
+            "INSERT INTO users (role, name, phone, password_hash, city, legal_status, is_demo) VALUES (?,?,?,?,?,?,?)",
+            (role, name, number, hash_password(password), home, legal_status, int(is_demo))).lastrowid
+        if truck:
+            _insert_vehicle(conn, user_id, truck)
     return public_user(get_user(user_id), with_phone=True)
 
 
@@ -137,23 +147,52 @@ def vehicle_view(v):
             "truck_label": TRUCK_LABEL[v["truck_type"]], "city_label": CITY_KA[v["city"]]}
 
 
+def normalize_plate(value):
+    """'aa 123 bb', 'AA-123-BB' -> 'AA-123-BB' (Georgian format, two letters, three digits, two letters); other
+    plates (older or special ones) are kept as typed, upper case. Empty or too short/long -> None."""
+    text = re.sub(r"[\s\-]+", "", str(value or "")).upper()
+    if re.fullmatch(r"[A-Z]{2}\d{3}[A-Z]{2}", text):
+        return f"{text[:2]}-{text[2:5]}-{text[5:]}"
+    return text if re.fullmatch(r"[A-Z0-9]{4,10}", text) else None
+
+
+VEHICLE_FIELD_KA = {"truck_type": "მანქანის ტიპი", "capacity_kg": "ტვირთამწეობა", "city": "სად დგას",
+                    "plate": "სახელმწიფო ნომერი"}
+
+
+def validate_vehicle(values):
+    """(clean values, None) or (None, error). The truck's type, capacity, city and plate are required: a driver's
+    loads are chosen by them, and the plate is how a shipper recognises the truck."""
+    v = dict(values or {})
+    clean = {"truck_type": truck_type(v.get("truck_type")), "city": city(v.get("city")),
+             "capacity_kg": _number(v.get("capacity_kg")), "plate": normalize_plate(v.get("plate"))}
+    missing = [f for f in VEHICLE_FIELD_KA if not clean[f]]
+    if missing:
+        return None, refuse("vehicle_missing", "მანქანა: საჭიროა " + ", ".join(VEHICLE_FIELD_KA[f] for f in missing) + ".",
+                            fields=missing)
+    if not 100 <= clean["capacity_kg"] <= 40000:
+        return None, refuse("bad_capacity", "ტვირთამწეობა კილოგრამებში: 100-დან 40 000-მდე.")
+    if db.one("SELECT id FROM vehicles WHERE plate = ?", (clean["plate"],)):
+        return None, refuse("plate_taken", f"მანქანა ნომრით {clean['plate']} უკვე დარეგისტრირებულია.")
+    fuel, wear = _number(v.get("fuel_l_per_100km")), _number(v.get("cost_per_km"))
+    clean.update(capacity_kg=int(clean["capacity_kg"]), liftgate=_flag(v.get("liftgate")), hazmat=_flag(v.get("hazmat")),
+                 fuel_l_per_100km=fuel if fuel and 3 <= fuel <= 80 else None,   # empty: the type's typical value
+                 cost_per_km=wear if wear and 0 < wear <= 5 else None)
+    return clean, None
+
+
+def _insert_vehicle(conn, driver_id, clean):
+    return conn.execute(
+        "INSERT INTO vehicles (driver_id, " + ", ".join(clean) + ") VALUES (?" + ",?" * len(clean) + ")",
+        (driver_id, *clean.values())).lastrowid
+
+
 def add_vehicle(driver_id, values):
-    kind = truck_type(values.get("truck_type"))
-    if not kind:
-        return refuse("bad_truck_type", f"აირჩიეთ ტიპი: {TRUCK_TYPES_TEXT}.")
-    where = city(values.get("city"))
-    if not where:
-        return refuse("bad_city", "აირჩიეთ ქალაქი, სადაც ახლა დგას მანქანა.")
-    capacity = _number(values.get("capacity_kg"))
-    if capacity is None or not 100 <= capacity <= 40000:
-        return refuse("bad_capacity", "ჩაწერეთ ტვირთამწეობა კილოგრამებში (100-დან 40 000-მდე).")
-    fuel, wear = _number(values.get("fuel_l_per_100km")), _number(values.get("cost_per_km"))
-    vehicle_id = db.execute(
-        "INSERT INTO vehicles (driver_id, truck_type, capacity_kg, city, plate, liftgate, hazmat, fuel_l_per_100km,"
-        " cost_per_km) VALUES (?,?,?,?,?,?,?,?,?)",
-        (driver_id, kind, int(capacity), where, (values.get("plate") or "").strip().upper() or None,
-         _flag(values.get("liftgate")), _flag(values.get("hazmat")),
-         fuel if fuel and 3 <= fuel <= 80 else None, wear if wear and 0 < wear <= 5 else None))
+    clean, error = validate_vehicle(values)
+    if error:
+        return error
+    with db.connect() as conn:
+        vehicle_id = _insert_vehicle(conn, driver_id, clean)
     return vehicle_view(db.one("SELECT * FROM vehicles WHERE id = ?", (vehicle_id,)))
 
 
@@ -241,10 +280,15 @@ def load_view(load, viewer=None):
     """A load as users see it. Phone numbers are shared only between the two sides of a booking."""
     view = {**load, "needs_liftgate": bool(load["needs_liftgate"]), "hazmat": bool(load["hazmat"]),
             "origin_label": CITY_KA[load["origin_city"]], "destination_label": CITY_KA[load["destination_city"]],
-            "truck_label": TRUCK_LABEL[load["truck_type"]], "status_label": LOAD_STATUS_KA[load["status"]]}
+            "truck_label": TRUCK_LABEL[load["truck_type"]], "status_label": LOAD_STATUS_KA[load["status"]],
+            "loaded_km": (route(load["origin_city"], load["destination_city"]) or {}).get("distance_km")}
     booked = load["status"] in ("booked", "in_transit", "delivered")
     if viewer and booked and viewer["id"] == load["shipper_id"] and load.get("driver_id"):
         view["driver"] = public_user(get_user(load["driver_id"]), with_phone=True)
+        v = db.one("SELECT * FROM vehicles WHERE id = ?", (load["vehicle_id"],))
+        if v:
+            view["vehicle"] = {"truck_label": TRUCK_LABEL[v["truck_type"]], "plate": v["plate"],
+                               "capacity_kg": v["capacity_kg"]}
     if viewer and booked and viewer["id"] == load.get("driver_id"):
         view["shipper"] = public_user(get_user(load["shipper_id"]), with_phone=True)
     return view
@@ -272,8 +316,10 @@ def loads_of_shipper(shipper_id, status=""):
     result = []
     for load in db.rows(sql + " ORDER BY pickup_date, id", args):
         view = load_view(load, viewer)
-        view["pending_offers"] = db.one("SELECT COUNT(*) AS n FROM offers WHERE load_id = ? AND status = 'pending'",
-                                        (load["id"],))["n"]
+        offers = db.one("SELECT COUNT(*) AS n, MIN(price_gel) AS best FROM offers WHERE load_id = ? AND status = 'pending'",
+                        (load["id"],))
+        view["pending_offers"], view["best_offer_gel"] = offers["n"], offers["best"]
+        view["price_check"] = price_check(load) if load["status"] == "open" else None
         result.append(view)
     return result
 

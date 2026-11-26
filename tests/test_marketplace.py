@@ -8,10 +8,16 @@ import server
 TOMORROW = (date.today() + timedelta(days=1)).isoformat()
 
 
-def client_for(role, phone, name="ტესტი", city="Tbilisi"):
+def truck(**change):
+    return {"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi", "plate": "TB-100-AA", **change}
+
+
+def client_for(role, phone, name="ტესტი", city="Tbilisi", vehicle=None):
+    """A signed-in browser. A driver registers with a truck (a Dry van in Tbilisi unless `vehicle` says otherwise)."""
     c = TestClient(server.app)
     r = c.post("/api/register", json={"role": role, "name": name, "phone": phone, "password": "password1",
-                                      "city": city, "legal_status": "entrepreneur"})
+                                      "city": city, "legal_status": "entrepreneur",
+                                      "vehicle": (vehicle or truck()) if role == "driver" else {}})
     assert r.status_code == 200, r.text
     return c
 
@@ -32,20 +38,34 @@ def test_registration_rules():
     assert c.post("/api/login", json={"phone": "555 12 34 56", "password": "password1"}).status_code == 200
 
 
+def test_a_driver_registers_with_a_truck_or_not_at_all():
+    c = TestClient(server.app)
+    driver = {"role": "driver", "name": "ლევანი", "phone": "555000002", "password": "password1"}
+    no_truck = c.post("/api/register", json=driver)
+    assert no_truck.status_code == 400 and "მანქანა" in no_truck.json()["detail"]
+    no_plate = c.post("/api/register", json={**driver, "vehicle": truck(plate="")})
+    assert no_plate.status_code == 400 and "ნომერი" in no_plate.json()["detail"]
+    assert c.post("/api/login", json={"phone": "555000002", "password": "password1"}).status_code == 401  # no account
+    ok = c.post("/api/register", json={**driver, "vehicle": truck(plate="tb 100 aa", fuel_l_per_100km=27)})
+    assert ok.status_code == 200
+    v = c.get("/api/vehicles/mine").json()[0]
+    assert v["plate"] == "TB-100-AA" and v["fuel_l_per_100km"] == 27            # the driver's own fuel use is kept
+    other = c.post("/api/register", json={**driver, "phone": "555000003", "vehicle": truck()})
+    assert other.status_code == 400 and "უკვე" in other.json()["detail"]        # one plate, one truck
+
+
 def test_not_signed_in():
     assert TestClient(server.app).get("/api/loads/mine").status_code == 401
 
 
 def test_the_whole_deal():
     shipper = client_for("shipper", "555000001", "ნინო")
-    driver = client_for("driver", "555000002", "ლევანი")
+    driver = client_for("driver", "555000002", "ლევანი", vehicle=truck(truck_type="Dry van", city="Gori"))
+    v = driver.get("/api/vehicles/mine").json()[0]
 
     load = shipper.post("/api/loads", json=load_body()).json()
     assert load["status"] == "open" and load["origin_label"] == "თბილისი"
 
-    # no vehicle yet: the driver is told to add one
-    assert driver.get("/api/loads/open").status_code == 400
-    v = driver.post("/api/vehicles", json={"truck_type": "Dry van", "capacity_kg": 18000, "city": "Gori"}).json()
     found = driver.get("/api/loads/open").json()
     row = found["loads"][0]
     assert row["load"]["id"] == load["id"] and row["earnings"]["empty_km"] == 85.8
@@ -72,7 +92,6 @@ def test_each_side_can_only_do_its_own_things():
     shipper = client_for("shipper", "555000001")
     other = client_for("shipper", "555000003")
     driver = client_for("driver", "555000002")
-    driver.post("/api/vehicles", json={"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi"})
     load = shipper.post("/api/loads", json=load_body()).json()
     offer = driver.post(f"/api/loads/{load['id']}/offers", json={}).json()
     assert offer["price_gel"] == 960                                  # no price: the shipper's own
@@ -97,8 +116,7 @@ def test_a_load_must_make_sense():
 
 def test_a_vehicle_that_cannot_carry_it_cannot_offer():
     shipper = client_for("shipper", "555000001")
-    driver = client_for("driver", "555000002")
-    driver.post("/api/vehicles", json={"truck_type": "sprinter_van", "capacity_kg": 1500, "city": "Tbilisi"})
+    driver = client_for("driver", "555000002", vehicle=truck(truck_type="sprinter_van", capacity_kg=1500))
     load = shipper.post("/api/loads", json=load_body()).json()
     assert driver.get("/api/loads/open").json()["loads"] == []
     assert driver.post(f"/api/loads/{load['id']}/offers", json={}).status_code == 400

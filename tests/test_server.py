@@ -7,7 +7,9 @@ import server
 
 def signed_in(role="shipper", phone="555000001"):
     c = TestClient(server.app)
-    c.post("/api/register", json={"role": role, "name": "ტესტი", "phone": phone, "password": "password1"})
+    truck = {"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi", "plate": f"TB-{phone[-3:]}-AA"}
+    c.post("/api/register", json={"role": role, "name": "ტესტი", "phone": phone, "password": "password1",
+                                  "vehicle": truck if role == "driver" else {}})
     return c
 
 

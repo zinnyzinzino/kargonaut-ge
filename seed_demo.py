@@ -64,10 +64,13 @@ def seed():
     for name, status, home in SHIPPERS:
         shippers.append(mp.register("shipper", name, next(phone), PASSWORD, home, status, is_demo=True))
     drivers = []
+    plate = iter(f"DM-{n:03d}-KG" for n in range(1, 100))   # simulated plates: "DM" = demo, never a real truck's
     for name, status, vehicles in DRIVERS:
-        d = mp.register("driver", name, next(phone), PASSWORD, vehicles[0][2], status, is_demo=True)
-        for kind, kg, where, liftgate in vehicles:
-            mp.add_vehicle(d["id"], {"truck_type": kind, "capacity_kg": kg, "city": where, "liftgate": liftgate})
+        trucks = [{"truck_type": kind, "capacity_kg": kg, "city": where, "liftgate": liftgate, "plate": next(plate)}
+                  for kind, kg, where, liftgate in vehicles]
+        d = mp.register("driver", name, next(phone), PASSWORD, vehicles[0][2], status, is_demo=True, vehicle=trucks[0])
+        for truck in trucks[1:]:
+            mp.add_vehicle(d["id"], truck)
         drivers.append(d)
     loads = []
     for who, origin, dest, kind, kg, cargo, days, where in LOADS:

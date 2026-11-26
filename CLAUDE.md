@@ -34,7 +34,12 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
 ## Where things are
 
 - `marketplace.py`: every rule (accounts, loads, offers, bookings, drafts). The site and the AI both call it.
-  Errors are `{"error": <Georgian sentence>, "error_code": ...}`.
+  Errors are `{"error": <Georgian sentence>, "error_code": ...}`. A driver registers WITH their truck (type,
+  capacity, city, plate required; fuel use and wear optional): account and truck are saved together or not at all.
+  One plate = one truck.
+- The look (26 Nov): one dark theme, near-black with yellow (`--gold`), everywhere: landing, sign-in, the app.
+  Colours are variables at the top of `static/style.css`; status colours are in `static/app.js` (`SHIP_GROUPS`,
+  `TRIP_GROUPS`) and are bright on purpose (the badges have dark text).
 - `core/`: pure Python engines. Money model: the shipper pays the driver; the driver pays the trip costs
   (diesel, wear, fixed); what's left is "მძღოლს რჩება", never "profit". The fair range = full cost (with a
   day's wage) + 9 to 25%. No platform fee yet (an open decision, README).

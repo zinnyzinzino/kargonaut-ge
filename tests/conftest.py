@@ -43,8 +43,9 @@ def people():
     import marketplace as mp
     shipper = mp.register("shipper", "ნინო", "555000001", "password1", "Tbilisi", "entrepreneur")
     other = mp.register("shipper", "გიორგი", "555000002", "password1", "Kutaisi")
-    driver = mp.register("driver", "ლევანი", "555000003", "password1", "Tbilisi")
-    vehicle = mp.add_vehicle(driver["id"], {"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi"})
+    driver = mp.register("driver", "ლევანი", "555000003", "password1", "Tbilisi",
+                         vehicle={"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi", "plate": "TB-100-AA"})
+    vehicle = mp.vehicles_of(driver["id"])[0]
     load = mp.create_load(shipper["id"], {"origin_city": "Tbilisi", "destination_city": "Batumi",
                                           "truck_type": "dry_van", "weight_kg": 12000, "price_gel": 960,
                                           "pickup_date": (date.today() + timedelta(days=2)).isoformat()})
