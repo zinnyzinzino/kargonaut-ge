@@ -1,0 +1,174 @@
+{
+  "about": "The two assistants' exam. Every case runs on a fresh copy of the simulated demo data (seed_demo.py). 'as' says whose assistant answers: shipper = ნინო ბერიძე (599000001, loads №1, №2, №9), driver = ლევან გელაშვილი (599000005, a Dry van, 18 t, in Tbilisi). Expected numbers were computed from the demo data on 26 Nov 2026 (see evals/README.md).",
+  "users": {"shipper": "599000001", "driver": "599000005"},
+  "cases": [
+    {
+      "id": "price-types-5t", "category": "price", "as": "shipper",
+      "origin": "No truck type given: compare the types that can carry it, name the cheapest",
+      "turns": [{"say": "რა ღირს 5 ტონის გაგზავნა ქუთაისიდან თბილისში?", "expect": {
+        "tools_called": ["estimate_price"],
+        "tool_args": {"estimate_price": {"origin_city": "Kutaisi", "destination_city": "Tbilisi", "weight_kg": 5000}},
+        "reply_contains_all": ["Dry van"], "reply_numbers": [610, 700], "numbers_grounded": true}}]
+    },
+    {
+      "id": "price-verdict-low", "category": "price", "as": "shipper",
+      "origin": "A price the user has in mind: say it doesn't cover costs and give the fair range",
+      "turns": [{"say": "თბილისიდან ბათუმში 8 ტონას Dry van-ით 700 ლარად ვგზავნი. ნორმალური ფასია?", "expect": {
+        "tools_called": ["estimate_price"],
+        "tool_args": {"estimate_price": {"origin_city": "Tbilisi", "destination_city": "Batumi", "truck_type": "dry_van",
+                                         "weight_kg": 8000, "price_gel": 700}},
+        "reply_numbers": [900, 1030], "reply_matches": ["ხარჯ|დაბალ|ნაკლებ"], "numbers_grounded": true}}]
+    },
+    {
+      "id": "price-unknown-city", "category": "price", "as": "shipper",
+      "origin": "A city we don't serve: no invented price",
+      "turns": [{"say": "ზუგდიდიდან თბილისში 5 ტონა რა ღირს?", "expect": {
+        "reply_matches": ["ზუგდიდ"], "reply_not_matches": ["\\d{3,}\\s*(₾|ლარ)"], "numbers_grounded": true}}]
+    },
+    {
+      "id": "draft-no-date", "category": "drafts", "as": "shipper",
+      "origin": "logimind-ai's model invented 'today' as a pickup date: never guess a date",
+      "turns": [{"say": "თბილისიდან ბათუმში 3 ტონა ავეჯი უნდა გავგზავნო, Box truck, 500 ლარად", "expect": {
+        "forbidden_calls": [{"tool": "propose_load", "args": {"pickup_date": "__nonempty__"}}],
+        "no_draft": true, "asks_question": true, "reply_matches": ["თარიღ|როდის|რიცხვ|დღე"]}}]
+    },
+    {
+      "id": "draft-full-confirm", "category": "drafts", "as": "shipper",
+      "origin": "Everything given: a draft (not a posted load), then the user's Confirm, then the assistant knows",
+      "turns": [
+        {"say": "ხვალ თბილისიდან ბათუმში 3 ტონა ავეჯი უნდა გავგზავნო, Box truck-ით, 500 ლარად", "expect": {
+          "tools_called": ["propose_load"],
+          "tool_args": {"propose_load": {"origin_city": "Tbilisi", "destination_city": "Batumi", "truck_type": "box_truck",
+                                         "weight_kg": 3000, "pickup_date": "{today+1}", "price_gel": 500}},
+          "draft_fields": {"draft.origin_city": "Tbilisi", "draft.destination_city": "Batumi", "draft.weight_kg": 3000,
+                           "draft.price_gel": 500, "draft.pickup_date": "{today+1}"},
+          "reply_matches": ["დადასტურ"], "reply_not_matches": ["გამოქვეყნდა|დაემატა|შევინახე"],
+          "numbers_grounded": true}},
+        {"event": "confirm_last_draft"},
+        {"say": "რამდენი ტვირთი მაქვს ახლა ღია?", "expect": {
+          "tools_called": ["my_loads"], "reply_contains_any": ["4", "ოთხ"], "numbers_grounded": true}}
+      ]
+    },
+    {
+      "id": "draft-no-price", "category": "drafts", "as": "shipper",
+      "origin": "No price: the user decides it; suggest the fair range, don't fill one in",
+      "turns": [{"say": "ზეგ ქუთაისიდან თბილისში 8 ტონა რძის პროდუქტები უნდა წავიდეს, Refrigerated", "expect": {
+        "forbidden_calls": [{"tool": "propose_load", "args": {"price_gel": "__nonempty__"}}],
+        "no_draft": true, "asks_question": true, "reply_numbers": [690, 790], "numbers_grounded": true}}]
+    },
+    {
+      "id": "draft-price-you-choose", "category": "drafts", "as": "shipper",
+      "origin": "'You set the price': the AI never sets a price, it gives the range and asks",
+      "turns": [{"say": "ხვალ თბილისიდან გორში 2 ტონა უნდა გავგზავნო, Box truck. ფასი თვითონ დააწესე", "expect": {
+        "forbidden_calls": [{"tool": "propose_load", "args": {"price_gel": "__nonempty__"}}],
+        "no_draft": true, "asks_question": true, "reply_numbers": [290, 330], "numbers_grounded": true}}]
+    },
+    {
+      "id": "offers-recommend", "category": "offers", "as": "shipper",
+      "origin": "Recommend the offer Python picked (lowest price), not the closest truck; no phone numbers",
+      "turns": [{"say": "ტვირთ №1-ზე ვინ შემომთავაზა? ვის ავირჩიო?", "expect": {
+        "tools_called": ["offers_for_my_load"], "tool_args": {"offers_for_my_load": {"load_id": 1}},
+        "first_named": {"options": ["მერაბ", "ლევან", "ირაკლ"], "want": "მერაბ"},
+        "reply_numbers": [920], "reply_not_contains": ["5990000"], "numbers_grounded": true}}]
+    },
+    {
+      "id": "offers-book-request", "category": "offers", "as": "shipper",
+      "origin": "The AI can't book: it must point to the Accept button, never claim it booked",
+      "turns": [
+        {"say": "ტვირთ №1-ზე ვინ შემომთავაზა?", "expect": {"tools_called": ["offers_for_my_load"], "numbers_grounded": true}},
+        {"say": "კარგი, მერაბი დაჯავშნე", "expect": {
+          "reply_matches": ["მიღება"], "reply_not_matches": ["დაჯავშნილია|დავჯავშნე"]}}
+      ]
+    },
+    {
+      "id": "my-loads", "category": "loads", "as": "shipper",
+      "origin": "The user's own loads, with their status",
+      "turns": [{"say": "რა ხდება ჩემს ტვირთებზე?", "expect": {
+        "tools_called": ["my_loads"], "reply_contains_any": ["ბათუმ"], "numbers_grounded": true}}]
+    },
+    {
+      "id": "vehicles-nearby", "category": "vehicles", "as": "shipper",
+      "origin": "Free vehicles near a city: counts and distances, never a driver's phone",
+      "turns": [{"say": "ქუთაისში არის თავისუფალი მანქანები 3 ტონისთვის?", "expect": {
+        "tools_called": ["available_vehicles"],
+        "tool_args": {"available_vehicles": {"city_name": "Kutaisi", "weight_kg": 3000}},
+        "reply_not_contains": ["5990000"], "numbers_grounded": true}}]
+    },
+    {
+      "id": "english-input", "category": "language", "as": "shipper",
+      "origin": "The site is Georgian only: an English question still gets a Georgian answer",
+      "turns": [{"say": "How much does it cost to send 5 tons from Kutaisi to Tbilisi?", "expect": {
+        "tools_called": ["estimate_price"], "reply_numbers": [610, 700], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-best-load", "category": "loads", "as": "driver",
+      "origin": "The best load is the one Python ranked first (what the driver keeps)",
+      "turns": [{"say": "რომელი ტვირთი მაწყობს ყველაზე მეტად?", "expect": {
+        "tools_called": ["find_loads"], "recommends_load": 1, "reply_numbers": [235], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-return-trip", "category": "loads", "as": "driver",
+      "origin": "A load for the way home: near the delivery city, heading home",
+      "turns": [{"say": "ზეგ ბათუმში ვიქნები. თბილისისკენ უკან რამე ტვირთი ხომ არ არის?", "expect": {
+        "tools_called": ["find_loads"],
+        "tool_args": {"find_loads": {"near_city": "Batumi", "heading_to": "Tbilisi"}},
+        "recommends_load": 10, "reply_numbers": [269], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-earnings-at-price", "category": "money", "as": "driver",
+      "origin": "What the driver keeps at a price they're thinking of: from the tool, no arithmetic",
+      "turns": [{"say": "ტვირთ №8-ზე 900 ლარი რომ შევთავაზო, რამდენი დამრჩება?", "expect": {
+        "tools_called": ["trip_earnings"], "tool_args": {"trip_earnings": {"load_id": 8, "price_gel": 900}},
+        "reply_numbers": [190], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-no-profit-word", "category": "money", "as": "driver",
+      "origin": "logimind-ai: the model copied 'not net profit' word for word. Never name the term, not even to deny it",
+      "turns": [{"say": "ტვირთ №1-ზე წმინდა მოგება რამდენი მექნება?", "expect": {
+        "tools_called_any": ["trip_earnings", "find_loads"], "reply_numbers": [235], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-offer-no-price", "category": "drafts", "as": "driver",
+      "origin": "An offer without a price: ask (and say the shipper's price), never pick one",
+      "turns": [{"say": "ტვირთ №8-ზე შეთავაზება გავაგზავნოთ", "expect": {
+        "forbidden_calls": [{"tool": "propose_offer", "args": {"price_gel": "__nonempty__"}}],
+        "no_draft": true, "asks_question": true, "reply_numbers": [800], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-offer-shipper-price", "category": "drafts", "as": "driver",
+      "origin": "The driver takes the shipper's own price: a draft at exactly that price, explicitly accepted",
+      "turns": [{"say": "ტვირთ №8-ს გამგზავნის ფასად ავიღებ", "expect": {
+        "tools_called": ["propose_offer"],
+        "tool_args": {"propose_offer": {"load_id": 8, "accept_shipper_price": true}},
+        "draft_fields": {"draft.load_id": 8, "draft.price_gel": 800},
+        "reply_matches": ["დადასტურ"], "reply_numbers": [800], "numbers_grounded": true}}]
+    },
+    {
+      "id": "driver-offer-confirm", "category": "drafts", "as": "driver",
+      "origin": "An offer is a draft until the driver confirms; afterwards the assistant sees it",
+      "turns": [
+        {"say": "ტვირთ №8-ზე 850 ლარი შევთავაზოთ", "expect": {
+          "tools_called": ["propose_offer"], "tool_args": {"propose_offer": {"load_id": 8, "price_gel": 850}},
+          "draft_fields": {"draft.load_id": 8, "draft.price_gel": 850},
+          "reply_matches": ["დადასტურ"], "reply_not_matches": ["შეთავაზება გაიგზავნა|გავუგზავნე"],
+          "numbers_grounded": true}},
+        {"event": "confirm_last_draft"},
+        {"say": "რა შეთავაზებები მაქვს გაგზავნილი?", "expect": {
+          "tools_called": ["my_jobs"], "reply_numbers": [850], "numbers_grounded": true}}
+      ]
+    },
+    {
+      "id": "driver-status-button", "category": "actions", "as": "driver",
+      "origin": "Status changes are the driver's buttons, and №1 isn't even booked yet",
+      "turns": [{"say": "ტვირთი №1 ავიღე, მონიშნე რომ გზაში ვარ", "expect": {
+        "reply_matches": ["ღილაკ|დაჯავშნ|მიიღ"], "reply_not_matches": ["მოვნიშნე|მონიშნულია"]}}]
+    },
+    {
+      "id": "driver-vehicles", "category": "vehicles", "as": "driver",
+      "origin": "The driver's own truck",
+      "turns": [{"say": "რა მანქანა მაქვს დარეგისტრირებული?", "expect": {
+        "tools_called": ["my_vehicles"], "reply_contains_all": ["Dry van"], "reply_numbers": [18000],
+        "numbers_grounded": true}}]
+    }
+  ]
+}

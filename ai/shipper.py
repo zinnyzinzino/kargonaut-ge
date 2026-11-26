@@ -83,8 +83,9 @@ def propose_load(origin_city: str, destination_city: str, truck_type: str = "", 
     """Prepare a DRAFT of a new load for the user to post. Nothing is posted: the user presses
     "დადასტურება" (Confirm) on the draft card. Never say it was posted.
     Pass only values the user gave. pickup_date: YYYY-MM-DD, converted from the user's words; pickup_date_words:
-    the user's exact words for the day (e.g. "ხვალ", "5 დეკემბერს"). price_gel: the price the USER chose; if they
-    haven't chosen one, leave it 0: the result gives the fair range to suggest, and the user decides.
+    the user's exact words for the day (e.g. "ხვალ", "5 დეკემბერს"). price_gel: the price the USER named; if they
+    haven't named one, leave it 0: the result gives the fair range to suggest, and the user decides. Even when the
+    user says "you set the price" ("ფასი შენ დააწესე"), never pass a price: give the fair range and ask which one.
     weight_kg in kilograms (5 ტონა = 5000). To change a draft that isn't confirmed yet, call again with ALL values
     and replaces_draft_id = the previous draft's draft_id."""
     values = {"origin_city": origin_city, "destination_city": destination_city, "truck_type": truck_type,

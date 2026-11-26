@@ -27,7 +27,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 copy .env.example .env          # then put your GEMINI_API_KEY in .env
 uvicorn server:app              # http://127.0.0.1:8000
-pytest                          # 73 tests, no Gemini key needed
+pytest                          # 78 tests, no Gemini key needed (includes the eval self-test)
 ```
 
 On the first start with an empty database, the server creates **simulated demo accounts**. Shippers have the

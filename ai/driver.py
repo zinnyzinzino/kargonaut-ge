@@ -73,11 +73,21 @@ def trip_earnings(load_id: int, price_gel: float = 0, vehicle_id: int = 0) -> di
             "cost_note": "Estimates; assumed lists values taken from a typical vehicle because the driver hasn't entered them."}
 
 
-def propose_offer(load_id: int, price_gel: float = 0, vehicle_id: int = 0, message: str = "",
-                  replaces_draft_id: str = "") -> dict:
+def propose_offer(load_id: int, price_gel: float = 0, accept_shipper_price: bool = False, vehicle_id: int = 0,
+                  message: str = "", replaces_draft_id: str = "") -> dict:
     """Prepare a DRAFT offer on an open load. Nothing is sent: the driver presses "დადასტურება" (Confirm) on the
-    draft card. Never say it was sent. price_gel: the price the DRIVER chose; 0 = accept the shipper's price.
-    Never choose a price for the driver. message: a short note to the shipper, only if the driver asked."""
+    draft card. Never say it was sent.
+    price_gel: the price the DRIVER named. accept_shipper_price: true ONLY when the driver said they take the
+    shipper's own price ("გამგზავნის ფასით", "იმ ფასად ავიღებ"). With neither, the tool asks the driver for a price:
+    never choose one for them. message: a short note to the shipper, only if the driver asked."""
+    if not price_gel and not accept_shipper_price:
+        # 26 Nov, first real eval: "let's send an offer on №8" became a draft at the shipper's price, which the driver
+        # never agreed to. No price and no explicit "the shipper's price" now means: ask.
+        load = marketplace.get_load(int(load_id))
+        if not load or load["status"] != "open":
+            return {"error": f"Load {load_id} is not open."}
+        return needs_input(["price_gel"], f"რა ფასს სთავაზობთ? გამგზავნის ფასია {load['price_gel']:g} ₾.",
+                           shipper_price_gel=load["price_gel"])
     return marketplace.draft_offer(me()["id"], {"load_id": load_id, "price_gel": price_gel or None,
                                                 "vehicle_id": vehicle_id or None, "message": message},
                                    replaces=replaces_draft_id)
@@ -106,14 +116,14 @@ def _guard_propose_offer(args, said):
     return args, {}
 
 
-def _propose_offer_checked(load_id: int, price_gel: float = 0, vehicle_id: int = 0, message: str = "",
-                           replaces_draft_id: str = "", _ask_price: bool = False) -> dict:
+def _propose_offer_checked(load_id: int, price_gel: float = 0, accept_shipper_price: bool = False, vehicle_id: int = 0,
+                           message: str = "", replaces_draft_id: str = "", _ask_price: bool = False) -> dict:
     if _ask_price:
         load = marketplace.get_load(int(load_id))
         price = load["price_gel"] if load else None
         return needs_input(["price_gel"], f"რა ფასს სთავაზობთ? გამგზავნის ფასია {price:g} ₾." if price else
                            "რა ფასს სთავაზობთ?", price_rejected="The driver hasn't said this price. Ask them.")
-    return propose_offer(load_id, price_gel, vehicle_id, message, replaces_draft_id)
+    return propose_offer(load_id, price_gel, accept_shipper_price, vehicle_id, message, replaces_draft_id)
 
 
 GUARDS = {"propose_offer": _guard_propose_offer}
@@ -140,8 +150,9 @@ FACTS
 
 MONEY (explain it exactly like this)
 - The shipper pays the driver the price. The driver pays the trip's costs from it: diesel, vehicle wear and
-  fixed trip costs. What is left ("მძღოლს რჩება") is pay for the driver's time. Never call it net profit
-  ("წმინდა მოგება"). Costs are estimates; say so once when you give money figures.
+  fixed trip costs. What is left ("მძღოლს რჩება") is pay for the driver's time. Never call it profit: the
+  word "მოგება" never appears in your answers, in any form. Costs are estimates; say so once when you give money
+  figures ("ხარჯები შეფასებაა").
 
 WHICH TOOL
 - "Any loads for me?", "what's the best load?" -> find_loads; name best_load_id first with 2-3 reasons in
@@ -150,7 +161,8 @@ WHICH TOOL
   heading_to = home.
 - "What would I keep at 700?", "is this load worth it?" -> trip_earnings
 - "Offer 700 on load 12", "I'll take it" -> propose_offer. It only prepares a DRAFT: say the driver must press
-  „დადასტურება“ to send it. Price 0 means the shipper's own price: use it only if the driver said they accept it.
+  „დადასტურება“ to send it. No price named: the tool asks; pass accept_shipper_price only if the driver said
+  they take the shipper's price.
 - "My jobs", "what's booked?" -> my_jobs; "my trucks" -> my_vehicles.
 - Picking up, delivering, withdrawing an offer: buttons on the site; you can't do them.
 

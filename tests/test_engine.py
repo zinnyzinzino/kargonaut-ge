@@ -69,7 +69,8 @@ def test_what_the_tools_found_is_shown_when_gemini_fails(people, monkeypatch):
 
 
 def test_a_draft_made_before_gemini_fails_keeps_its_card(people, monkeypatch):
-    bot = bot_for(people["driver"], monkeypatch, ScriptedModels(("propose_offer", {"load_id": people["load"]["id"]})))
+    bot = bot_for(people["driver"], monkeypatch, ScriptedModels(
+        ("propose_offer", {"load_id": people["load"]["id"], "accept_shipper_price": True})))
     result = bot.ask("ავიღებ ამ ტვირთს გამგზავნის ფასად")
     assert result["drafts"] and result["drafts"][0]["kind"] == "offer"
     assert "დადასტურებას" in result["reply"]

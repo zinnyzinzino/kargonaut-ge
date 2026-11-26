@@ -72,8 +72,19 @@ def test_a_drivers_price_the_driver_never_said_is_refused(people):
 def test_each_user_sees_only_their_own(people):
     r = shipper_tool("offers_for_my_load", {"load_id": people["load"]["id"]}, people["other"])
     assert r["error_code"] == "not_your_load"
-    draft = driver_tool("propose_offer", {"load_id": people["load"]["id"]}, people["driver"], said="ვიღებ")
+    draft = driver_tool("propose_offer", {"load_id": people["load"]["id"], "accept_shipper_price": True},
+                        people["driver"], said="გამგზავნის ფასით ვიღებ")
     assert mp.confirm_draft(people["other"]["id"], draft["draft_id"])["error_code"] == "draft_gone"
+
+
+def test_no_price_means_ask_not_the_shippers_price(people):
+    """26 Nov, first real eval: "let's send an offer on №8" became a draft at the shipper's price the driver never
+    agreed to. Without a price, the shipper's price is used only when the driver explicitly takes it."""
+    asked = driver_tool("propose_offer", {"load_id": people["load"]["id"]}, people["driver"], said="შეთავაზება გავაგზავნოთ")
+    assert "price_gel" in asked["needs_input"] and "960" in asked["ask_user"] and "draft_id" not in asked
+    taken = driver_tool("propose_offer", {"load_id": people["load"]["id"], "accept_shipper_price": True},
+                        people["driver"], said="გამგზავნის ფასით ავიღებ")
+    assert taken["draft_id"] and taken["draft"]["price_gel"] == 960
 
 
 def test_driver_finds_the_load_with_its_earnings(people):

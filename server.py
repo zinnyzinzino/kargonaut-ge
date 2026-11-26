@@ -222,6 +222,19 @@ def offer_accept(offer_id: int, user=Depends(shipper)):
     return result
 
 
+# ---------------------------------------------------------------- ratings (both sides, after delivery)
+
+class RateIn(BaseModel):
+    stars: int
+    comment: str = ""
+
+
+@app.post("/api/loads/{load_id}/rate")
+def rate_load(load_id: int, body: RateIn, user=Depends(current_user)):
+    """The shipper rates the driver, or the driver the shipper, once the load is delivered. A person's click only."""
+    return _ok(mp.rate(user["id"], load_id, body.stars, body.comment))
+
+
 # ---------------------------------------------------------------- driver side
 
 class VehicleIn(BaseModel):
@@ -283,8 +296,55 @@ def jobs(user=Depends(driver)):
 
 @app.post("/api/jobs/{load_id}/advance")
 def job_advance(load_id: int, user=Depends(driver)):
-    """Picked up -> delivered: the driver's own button."""
+    """Booked -> picked up: the driver's own button. Delivered needs the proof of delivery (below)."""
     return _ok(mp.advance_job(user["id"], load_id))
+
+
+def _pods_dir():
+    """Proof-of-delivery photos live next to the database (data/pod/, git-ignored), so tests and the eval keep theirs
+    in their own temporary folders, and in the cloud they reset together with the database."""
+    return db.db_path().parent / "pod"
+
+
+@app.post("/api/jobs/{load_id}/deliver")
+def job_deliver(load_id: int, file: UploadFile = File(...), user=Depends(driver)):
+    """„მივიტანე“: the driver uploads the signed paper (a waybill, a handover act, a POD). The paperwork agent reads
+    it (who signed, is a name printed), Python checks it (signature, the delivery city), then the load is delivered.
+    Problems don't block the delivery: both sides see them, with what to do."""
+    from paperwork.extract import MIME_TYPES
+    from paperwork.graph import read_documents
+    load = mp.get_load(load_id)
+    if not load or load.get("driver_id") != user["id"] or load["status"] != "in_transit":
+        # the same refusal as the marketplace rule, before any reading is paid for
+        _ok(mp.deliver_with_pod(user["id"], load_id, "", "", None, []))
+    name = Path(file.filename or "pod").name
+    suffix = Path(name).suffix.lower()
+    if suffix not in MIME_TYPES:
+        raise HTTPException(400, f"{name}: მხოლოდ PDF, JPG, PNG ან WEBP ფაილი.")
+    data = file.file.read(PAPERWORK_MAX_BYTES + 1)
+    if len(data) > PAPERWORK_MAX_BYTES:
+        raise HTTPException(413, f"{name} 10 MB-ზე დიდია.")
+    folder = _pods_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w.-]", "_", Path(name).stem)[:40]
+    path = folder / f"{load_id}_{uuid.uuid4().hex[:8]}_{safe}{suffix}"
+    path.write_bytes(data)
+    state = read_documents([path], [user["name"]] + OUR_CARRIER, reader=_paperwork_reader(), lang="ka",
+                           display_names={str(path): name})
+    document = (state.get("documents") or [None])[0]
+    # "no rate confirmation to compare with" is for a dispatcher's pack of documents, not for one delivery paper
+    findings = [f for f in state.get("findings", []) if f.get("check") != "no_rate_confirmation"]
+    return _ok(mp.deliver_with_pod(user["id"], load_id, name, str(path), document, findings))
+
+
+@app.get("/api/loads/{load_id}/pod/file")
+def pod_file(load_id: int, user=Depends(current_user)):
+    """The proof-of-delivery photo: only for the load's shipper and driver."""
+    from paperwork.extract import MIME_TYPES
+    found = mp.pod_file(user["id"], load_id)
+    if not found or not Path(found[0]).exists():
+        raise HTTPException(404, "დოკუმენტი ვერ მოიძებნა.")
+    return FileResponse(found[0], media_type=MIME_TYPES.get(Path(found[0]).suffix.lower()), filename=found[1])
 
 
 # ---------------------------------------------------------------- the AI assistant (both sides)
@@ -363,6 +423,14 @@ PAPERWORK_PASSAGES = {}  # check_id -> (user id, the documents' text as passages
 QUESTION_MAX_CHARS = 300
 
 
+def _paperwork_reader():
+    """Saved readings first (the private cache, then the demo documents' shipped readings); Gemini only with a key.
+    Without a key a new document can't be read and is reported as unreadable."""
+    from paperwork.extract import CachedReader, GeminiReader
+    gemini = GeminiReader(on_status=_log) if _gemini_key_set() else None
+    return CachedReader(PAPERWORK_CACHE, gemini, by_content=True, also_from=[PAPERWORK_SHIPPED])
+
+
 def _remember(store, key, value):
     store[key] = value
     while len(store) > 50:
@@ -402,9 +470,7 @@ def paperwork_check(files: list[UploadFile] = File(default=[]), user=Depends(cur
             names[str(path)] = name
         texts = {names[str(p)]: passages(names[str(p)], document_pages(p)) for p in paths}
         # No key: only saved readings (the demo documents' ship with the app); a new document is "unreadable"
-        gemini = GeminiReader(on_status=_log) if _gemini_key_set() else None
-        reader = CachedReader(PAPERWORK_CACHE, gemini, by_content=True, also_from=[PAPERWORK_SHIPPED])
-        state = read_documents(paths, OUR_CARRIER, reader=reader, lang="ka", display_names=names)
+        state = read_documents(paths, OUR_CARRIER, reader=_paperwork_reader(), lang="ka", display_names=names)
     w = Wording("ka")
     check_id = uuid.uuid4().hex[:10]
     plan = state.get("draft_plan")

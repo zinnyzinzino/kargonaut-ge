@@ -84,7 +84,58 @@ def seed():
     mp.make_offer(drivers[5]["id"], {"load_id": first["id"], "price_gel": first["price_gel"] - 40,
                                      "message": "ხვალვე შემიძლია"})
     mp.make_offer(drivers[3]["id"], {"load_id": first["id"], "price_gel": first["price_gel"] + 30})
-    return {"shippers": len(shippers), "drivers": len(drivers), "loads": len(loads)}
+    past = past_trips(shippers, drivers)   # after the open loads, so their numbers (№1-№10) never change
+    on_road = trip_on_the_road(shippers, drivers)
+    return {"shippers": len(shippers), "drivers": len(drivers), "loads": len(loads), "past_trips": past,
+            "on_the_road": on_road}
+
+
+def trip_on_the_road(shippers, drivers):
+    """One trip already on the road for the demo driver (ლევანი), matching the simulated proof of delivery
+    demo_documents/ge/ge-06/pod.pdf (Gori -> Rustavi, 6 boxes of spare parts, 900 kg): pressing „მივიტანე“ with that
+    paper shows the delivery check without any Gemini call (its reading ships with the app)."""
+    shipper, driver = shippers[3], drivers[0]
+    vehicle = mp.vehicles_of(driver["id"])[0]
+    with db.connect() as conn:
+        return conn.execute(
+            "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pieces,"
+            " pickup_date, pickup_address, delivery_address, price_gel, notes, status, driver_id, vehicle_id,"
+            " agreed_price_gel) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (shipper["id"], "Gori", "Rustavi", vehicle["truck_type"], 900, "სათადარიგო ნაწილები", 6,
+             date.today().isoformat(), "ცხინვალის გზატკეცილი №5", "მეგობრობის გამზ. 21", 310,
+             "სადემონსტრაციო რეისი (სიმულაცია)", "in_transit", driver["id"], vehicle["id"], 310)).lastrowid
+
+
+# Finished trips with ratings, so ratings show from the start: (shipper, driver, from, to, kg, days ago, price,
+# stars the shipper gave the driver, stars the driver gave the shipper, the shipper's comment). All SIMULATED.
+PAST = [
+    (0, 5, "Tbilisi", "Kutaisi", 10000, 12, 640, 5, 5, "დროულად მოიტანა, ყველაფერი რიგზე იყო"),
+    (1, 5, "Kutaisi", "Batumi", 8000, 20, 520, 5, 4, None),
+    (2, 5, "Batumi", "Tbilisi", 12000, 33, 980, 4, 5, "ცოტა დააგვიანა, მაგრამ დაგვირეკა"),
+    (3, 5, "Gori", "Tbilisi", 9000, 41, 330, 5, 5, None),
+    (0, 0, "Tbilisi", "Gori", 6000, 9, 300, 4, 5, None),
+    (2, 0, "Poti", "Tbilisi", 14000, 27, 1050, 5, 4, "კარგი მძღოლი"),
+    (2, 1, "Batumi", "Tbilisi", 9000, 15, 1080, 5, 5, "მაცივარი სწორ ტემპერატურაზე ეჭირა"),
+    (1, 1, "Poti", "Kutaisi", 7000, 38, 560, 5, 4, None),
+]
+
+
+def past_trips(shippers, drivers):
+    for s, d, origin, dest, kg, days_ago, price, to_driver, to_shipper, comment in PAST:
+        shipper, driver = shippers[s], drivers[d]
+        vehicle = mp.vehicles_of(driver["id"])[0]
+        with db.connect() as conn:
+            load_id = conn.execute(
+                "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pickup_date,"
+                " price_gel, notes, status, driver_id, vehicle_id, agreed_price_gel) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (shipper["id"], origin, dest, vehicle["truck_type"], kg, "ტვირთი",
+                 (date.today() - timedelta(days=days_ago)).isoformat(), price, "სადემონსტრაციო რეისი (სიმულაცია)",
+                 "delivered", driver["id"], vehicle["id"], price)).lastrowid
+            conn.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",
+                         (load_id, shipper["id"], driver["id"], to_driver, comment))
+            conn.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",
+                         (load_id, driver["id"], shipper["id"], to_shipper, None))
+    return len(PAST)
 
 
 if __name__ == "__main__":
@@ -93,6 +144,6 @@ if __name__ == "__main__":
         if "--force" not in sys.argv:
             raise SystemExit("The database isn't empty. Use --force to delete everything and seed again.")
         with db.connect() as conn:
-            for table in ("offers", "loads", "vehicles", "sessions", "users"):
+            for table in ("pods", "ratings", "offers", "loads", "vehicles", "sessions", "users"):
                 conn.execute(f"DELETE FROM {table}")
     print(seed(), "- demo password:", PASSWORD, "- phones 599000001 ...")

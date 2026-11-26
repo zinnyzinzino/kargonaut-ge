@@ -72,6 +72,28 @@ CREATE TABLE IF NOT EXISTS loads (
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS ratings (
+    id          INTEGER PRIMARY KEY,
+    load_id     INTEGER NOT NULL REFERENCES loads(id),
+    from_user   INTEGER NOT NULL REFERENCES users(id),
+    to_user     INTEGER NOT NULL REFERENCES users(id),
+    stars       INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+    comment     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (load_id, from_user)                -- each side rates the other once per load
+);
+
+CREATE TABLE IF NOT EXISTS pods (               -- proof of delivery: the signed paper the driver photographs
+    id          INTEGER PRIMARY KEY,
+    load_id     INTEGER NOT NULL UNIQUE REFERENCES loads(id),
+    driver_id   INTEGER NOT NULL REFERENCES users(id),
+    file_name   TEXT NOT NULL,                 -- as uploaded (shown to people)
+    stored_path TEXT NOT NULL,                 -- where the file is kept (data/pod/, git-ignored)
+    document    TEXT,                          -- what the paperwork agent read (JSON, paperwork/schema.py format)
+    findings    TEXT,                          -- the checks' problems and notes (JSON)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS offers (
     id          INTEGER PRIMARY KEY,
     load_id     INTEGER NOT NULL REFERENCES loads(id),

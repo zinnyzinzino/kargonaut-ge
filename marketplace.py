@@ -9,6 +9,7 @@ cancelling and status changes are buttons only: the AI has no tool for them.
 """
 import hashlib
 import hmac
+import json
 import math
 import re
 import secrets
@@ -78,7 +79,8 @@ def check_password(password, stored):
 def public_user(u, with_phone=False):
     view = {"id": u["id"], "role": u["role"], "name": u["name"], "city": u.get("city"),
             "city_label": CITY_KA.get(u.get("city"), u.get("city")), "legal_status": u["legal_status"],
-            "legal_status_label": LEGAL_STATUS_KA[u["legal_status"]], "is_demo": bool(u.get("is_demo"))}
+            "legal_status_label": LEGAL_STATUS_KA[u["legal_status"]], "is_demo": bool(u.get("is_demo")),
+            "rating": rating_summary(u["id"])}
     if with_phone:
         view["phone"] = u["phone"]
     return view
@@ -291,6 +293,11 @@ def load_view(load, viewer=None):
                                "capacity_kg": v["capacity_kg"]}
     if viewer and booked and viewer["id"] == load.get("driver_id"):
         view["shipper"] = public_user(get_user(load["shipper_id"]), with_phone=True)
+    if viewer and load["status"] == "delivered" and viewer["id"] in (load["shipper_id"], load.get("driver_id")):
+        given = db.one("SELECT stars, comment FROM ratings WHERE load_id = ? AND from_user = ?", (load["id"], viewer["id"]))
+        view["my_rating"] = given            # what this user gave the other side (None: not yet)
+        view["can_rate"] = given is None
+        view["pod"] = pod_view(load["id"])
     return view
 
 
@@ -344,6 +351,7 @@ def loads_for_driver(driver_id, start_city=None, heading_to=None, limit=20):
         view = load_view(r["load"])
         mine = offered.get(r["load"]["id"])
         rows.append({"load": view, "vehicle_id": r["vehicle_id"], "earnings": r["earnings"],
+                     "shipper_rating": rating_summary(r["load"]["shipper_id"]),
                      "my_offer": {"offer_id": mine["id"], "price_gel": mine["price_gel"]} if mine else None})
     return {"total": len(ranked), "loads": rows, "start_city": start, "heading_to": heading}
 
@@ -423,6 +431,7 @@ def offers_for_load(shipper_id, load_id):
         ranked.append({**offer_view(o), "truck_label": TRUCK_LABEL[o["truck_type"]],
                        "vehicle_city_label": CITY_KA[o["vehicle_city"]],
                        "legal_status_label": LEGAL_STATUS_KA[o["legal_status"]],
+                       "driver_rating": rating_summary(o["driver_id"]),
                        "price_verdict": verdict["verdict"] if verdict else None,
                        "price_verdict_label": verdict["verdict_label"] if verdict else None})
     return {"load": load_view(load), "price_check": check, "offers": ranked,
@@ -466,14 +475,104 @@ def jobs_of_driver(driver_id):
     return {"jobs": jobs, "pending_offers": offers}
 
 
-NEXT_STATUS = {"booked": "in_transit", "in_transit": "delivered"}
+# ---------------------------------------------------------------- ratings (after delivery, each side rates the other)
 
 
-def advance_job(driver_id, load_id):
-    """booked -> in_transit (picked up) -> delivered. Only the booked driver, one step at a time."""
+def rating_summary(user_id):
+    """{"average": 4.6, "count": 5} from the ratings this user received; average None while there are none."""
+    r = db.one("SELECT AVG(stars) AS avg, COUNT(*) AS n FROM ratings WHERE to_user = ?", (user_id,))
+    return {"average": round(r["avg"], 1) if r["n"] else None, "count": r["n"]}
+
+
+def rate(user_id, load_id, stars, comment=""):
+    """The shipper rates the driver of a delivered load, or the driver rates the shipper. Once per side per load."""
+    load = get_load(load_id)
+    if not load or user_id not in (load["shipper_id"], load.get("driver_id")):
+        return refuse("not_your_load", "ეს ტვირთი თქვენს ანგარიშზე არ არის.")
+    if load["status"] != "delivered":
+        return refuse("not_delivered", "შეფასება შესაძლებელია მხოლოდ მიტანის შემდეგ.")
+    n = _number(stars)
+    if n is None or int(n) != n or not 1 <= n <= 5:
+        return refuse("bad_stars", "შეფასება: 1-დან 5 ვარსკვლავამდე.")
+    if db.one("SELECT id FROM ratings WHERE load_id = ? AND from_user = ?", (load_id, user_id)):
+        return refuse("already_rated", "ეს რეისი უკვე შეაფასეთ.")
+    other = load["driver_id"] if user_id == load["shipper_id"] else load["shipper_id"]
+    db.execute("INSERT INTO ratings (load_id, from_user, to_user, stars, comment) VALUES (?,?,?,?,?)",
+               (load_id, user_id, other, int(n), (comment or "").strip()[:300] or None))
+    return {"ok": True, "load_id": load_id, "stars": int(n), "rated_user": rating_summary(other)}
+
+
+# ---------------------------------------------------------------- proof of delivery
+
+
+def pod_view(load_id):
+    """What both sides see about a delivered load's proof of delivery, or None."""
+    p = db.one("SELECT * FROM pods WHERE load_id = ?", (load_id,))
+    if not p:
+        return None
+    doc = json.loads(p["document"] or "null") or {}
+    receiver = (doc.get("signatures") or {}).get("receiver") or {}
+    findings = json.loads(p["findings"] or "[]")
+    return {"file_name": p["file_name"], "uploaded_at": p["created_at"], "kind": doc.get("kind"),
+            "receiver_signed": receiver.get("signed"), "receiver_name": receiver.get("name"),
+            "delivery_address": (doc.get("delivery") or {}).get("address"),
+            "delivery_date": (doc.get("delivery") or {}).get("date"),
+            "problems": [f for f in findings if f.get("severity") == "problem"],
+            "notes": [f for f in findings if f.get("severity") != "problem"],
+            "read": bool(doc)}
+
+
+def pod_check_city(load, document):
+    """Python's own check (the paperwork agent reads; Python compares): the city on the proof of delivery must be the
+    load's delivery city. A finding in the paperwork format, or None."""
+    from paperwork.draft import _city
+    printed = _city(document.get("delivery") or {}) if document else None
+    if printed and printed != load["destination_city"]:
+        return {"check": "pod_city_mismatch", "severity": "problem", "documents": [document.get("name")],
+                "detail": f"მიტანის დადასტურებაზე ქალაქია {CITY_KA[printed]}, ტვირთი კი {CITY_KA[load['destination_city']]}-ში "
+                          f"უნდა მისულიყო.",
+                "action": "გადაამოწმეთ მძღოლთან: სწორი დოკუმენტი ატვირთა?"}
+    return None
+
+
+def deliver_with_pod(driver_id, load_id, file_name, stored_path, document, findings):
+    """The driver's „მივიტანე“: only with a proof of delivery. Saves the paper and what was read, then marks the
+    load delivered. Problems found on the paper don't block it: both sides see them, with what to do."""
     load = get_load(load_id)
     if not load or load.get("driver_id") != driver_id:
         return refuse("not_your_job", "ეს ტვირთი თქვენზე არ არის დაჯავშნილი.")
+    if load["status"] != "in_transit":
+        return refuse("not_in_transit", "მიტანა შესაძლებელია მხოლოდ მას შემდეგ, რაც ტვირთს აიღებთ („ავიღე ტვირთი“).")
+    city_problem = pod_check_city(load, document)
+    findings = list(findings or []) + ([city_problem] if city_problem else [])
+    with db.connect() as conn:
+        conn.execute("INSERT INTO pods (load_id, driver_id, file_name, stored_path, document, findings) VALUES (?,?,?,?,?,?)",
+                     (load_id, driver_id, file_name, stored_path, json.dumps(document, ensure_ascii=False) if document else None,
+                      json.dumps(findings, ensure_ascii=False)))
+        conn.execute("UPDATE loads SET status = 'delivered' WHERE id = ?", (load_id,))
+        conn.execute("UPDATE vehicles SET city = ? WHERE id = ?", (load["destination_city"], load["vehicle_id"]))
+    return {**load_view(get_load(load_id), get_user(driver_id)), "pod": pod_view(load_id)}
+
+
+def pod_file(user_id, load_id):
+    """(path, file name) of a load's proof of delivery, for its shipper and driver only."""
+    load = get_load(load_id)
+    p = db.one("SELECT * FROM pods WHERE load_id = ?", (load_id,))
+    if not load or not p or user_id not in (load["shipper_id"], load.get("driver_id")):
+        return None
+    return p["stored_path"], p["file_name"]
+
+
+NEXT_STATUS = {"booked": "in_transit"}   # in_transit -> delivered only with a proof of delivery (deliver_with_pod)
+
+
+def advance_job(driver_id, load_id):
+    """booked -> in_transit (picked up). Delivered needs a proof of delivery: deliver_with_pod."""
+    load = get_load(load_id)
+    if not load or load.get("driver_id") != driver_id:
+        return refuse("not_your_job", "ეს ტვირთი თქვენზე არ არის დაჯავშნილი.")
+    if load["status"] == "in_transit":
+        return refuse("pod_required", "მისატანად ატვირთეთ ხელმოწერილი დოკუმენტის ფოტო (ზედნადები ან მიღება-ჩაბარების აქტი).")
     nxt = NEXT_STATUS.get(load["status"])
     if not nxt:
         return refuse("finished", "ეს ტვირთი უკვე მიტანილია.")

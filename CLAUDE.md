@@ -47,6 +47,14 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   number self-check, offline answer), two roles (`shipper.py`, `driver.py`). **Docstrings are prompts.**
   Guards in Python (`ai/common.py`): a pickup date, price or weight the user never wrote is dropped and the
   tool asks. Lesson from logimind-ai: fixes in tools beat rules in the prompt.
+- Ratings: after delivery each side rates the other once, 1-5 stars (`marketplace.rate`, table `ratings`). Averages show
+  on offers, on the driver's load board and in the header. The offer ranking is still price first, then distance.
+- Proof of delivery: „მივიტანე“ (in_transit -> delivered) needs the signed paper (`POST /api/jobs/{id}/deliver`). The
+  paperwork agent reads it, Python checks the signature and the delivery city (`marketplace.pod_check_city`);
+  problems don't block delivery, both sides see them with an action. Photos live next to the database (`data/pod/`).
+  The demo trip on the road (load 19, Gori -> Rustavi) matches `demo_documents/ge/ge-06/pod.pdf`, whose reading ships.
+- Eval (`evals/`, see its README): 21 cases on real Gemini; baseline 21/21 on gemini-3.5-flash-lite (26 Nov).
+  `python evals/selftest.py` first (also in pytest). Same rules as logimind-ai: read the reply before blaming the agent.
 - `paperwork/`: from logimind-ai, unchanged except `draft.py` (a document now becomes a marketplace load
   draft via `marketplace.draft_load`). Its notes are in `../logimind-ai/CLAUDE.md`.
 - The database is SQLite (`db.py`, `data/kargonaut.db`, git-ignored). In the cloud it resets on every restart.

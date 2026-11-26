@@ -17,6 +17,86 @@ const go = (hash) => { if (location.hash !== hash) location.hash = hash; else ro
 const cityLabel = (code) => (S.meta.cities.find((c) => c.name === code) || {}).label || code;
 const typeLabel = (code) => (S.meta.truck_types.find((t) => t.code === code) || {}).label || code;
 
+// ---------------------------------------------------------------- ratings
+// "★ 4,8 (4)" for a person's average, or "ახალი" while nobody has rated them yet
+const stars = (r) => r && r.count
+  ? `<span class="stars" title="${r.count} შეფასება">★ ${String(r.average).replace(".", ",")}<span class="muted"> (${r.count})</span></span>`
+  : `<span class="muted small">ახალი, შეფასება ჯერ არ აქვს</span>`;
+const given = (r) => `<span class="muted small">თქვენი შეფასება: </span><span class="stars">${"★".repeat(r.stars)}${"☆".repeat(5 - r.stars)}</span>`;
+
+// ---------------------------------------------------------------- proof of delivery
+function podBlock(l, compact = false) {
+  const p = l.pod;
+  if (!p) return "";
+  const who = p.receiver_name ? `მიიღო: <b>${esc(p.receiver_name)}</b>`
+    : p.receiver_signed ? "ხელმოწერილია, მაგრამ მიმღების სახელი არ წერია"
+    : p.read ? "მიმღების ხელმოწერა არ ჩანს" : "დოკუმენტი ვერ წავიკითხეთ";
+  const finding = (f) => `<div class="finding ${f.severity === "problem" ? "" : "note"}">${esc(f.detail)}
+    ${f.action ? `<div class="todo">→ ${esc(f.action)}</div>` : ""}</div>`;
+  return `<div class="pod-box"><div class="pod-head"><span class="label-sm">მიტანის დადასტურება</span>
+      <a href="/api/loads/${l.id}/pod/file" target="_blank" rel="noopener">${esc(p.file_name)}</a>
+      ${p.problems.length ? `<span class="chip bad">${p.problems.length} პრობლემა</span>` : `<span class="chip go">✓ რიგზეა</span>`}</div>
+    <div class="small">${who}${p.delivery_date ? ` · ${esc(p.delivery_date)}` : ""}</div>
+    ${compact ? "" : p.problems.map(finding).join("") + p.notes.map(finding).join("")}</div>`;
+}
+
+function podForm(loadId) {
+  return `<form class="pod-form" data-pod="${loadId}">
+    <span class="label-sm">მიტანისთვის ატვირთეთ ხელმოწერილი ზედნადები ან მიღება-ჩაბარების აქტი</span>
+    <label class="btn sm secondary">ფოტო / PDF<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="sr-only"></label>
+    <span class="pod-name muted small">ფაილი არ არის არჩეული</span>
+    <button type="button" class="link small" data-pod-demo>სადემონსტრაციო ქაღალდი</button>
+    <button class="btn sm go">✓ მივიტანე</button></form>`;
+}
+
+function wirePodForms(root, after) {
+  $$(".pod-form", root).forEach((f) => {
+    const show = (name) => { $(".pod-name", f).textContent = name; };
+    f.file.onchange = () => { f._file = f.file.files[0]; if (f._file) show(f._file.name); };
+    $("[data-pod-demo]", f).onclick = async () => {   // the simulated demo POD, the same way the documents tab loads it
+      const blob = await (await fetch("/api/paperwork/demo/ge-06/pod.pdf")).blob();
+      f._file = new File([blob], "pod.pdf", { type: "application/pdf" });
+      show("pod.pdf (სიმულაცია)");
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!f._file) { toast("ჯერ აირჩიეთ ხელმოწერილი დოკუმენტის ფოტო ან PDF.", true); return; }
+      const data = new FormData();
+      data.append("file", f._file, f._file.name);
+      const button = $("button.go", f);
+      button.disabled = true; button.textContent = "ვამოწმებ დოკუმენტს…";
+      try {
+        const r = await api(`/api/jobs/${f.dataset.pod}/deliver`, { method: "POST", body: data });
+        toast(r.pod && r.pod.problems.length ? "მიტანილია. დოკუმენტზე არის პრობლემა: ნახეთ დეტალები." : "მიტანილია. დოკუმენტი რიგზეა.");
+        after();
+      } catch (err) { toast(err.message, true); button.disabled = false; button.textContent = "✓ მივიტანე"; }
+    };
+  });
+}
+
+function ratingForm(loadId, whom) {
+  return `<form class="rate-form" data-rate="${loadId}"><span class="label-sm">შეაფასეთ ${esc(whom)}</span>
+    <span class="star-pick">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" aria-label="${n}">★</button>`).join("")}</span>
+    <input name="comment" placeholder="კომენტარი (არასავალდ.)" maxlength="300"><button class="btn sm">შეფასება</button></form>`;
+}
+function wireRatings(root, after) {
+  $$(".rate-form", root).forEach((f) => {
+    $$("[data-star]", f).forEach((b) => b.onclick = () => {
+      f.dataset.stars = b.dataset.star;
+      $$("[data-star]", f).forEach((x) => x.classList.toggle("on", +x.dataset.star <= +b.dataset.star));
+    });
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!f.dataset.stars) { toast("აირჩიეთ 1-დან 5 ვარსკვლავამდე.", true); return; }
+      try {
+        await api(`/api/loads/${f.dataset.rate}/rate`, { json: { stars: +f.dataset.stars, comment: f.comment.value } });
+        toast("მადლობა, შეფასება შენახულია.");
+        after();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
 async function api(path, options = {}) {
   const init = { credentials: "same-origin", ...options };
   if (options.json !== undefined) {
@@ -188,7 +268,8 @@ const TABS = {
 function setupShell() {
   const me = S.me;
   $("#who-name").textContent = me.name;
-  $("#who-role").textContent = (me.role === "shipper" ? "ტვირთის გამგზავნი" : "მძღოლი") + " · " + me.legal_status_label;
+  $("#who-role").textContent = (me.role === "shipper" ? "ტვირთის გამგზავნი" : "მძღოლი") + " · " + me.legal_status_label +
+    (me.rating && me.rating.count ? ` · ★ ${String(me.rating.average).replace(".", ",")} (${me.rating.count})` : "");
   $("#avatar").textContent = me.name.trim()[0] || "?";
   $("#demo-chip").classList.toggle("hidden", !me.is_demo);
   $("#app-tabs").innerHTML = TABS[me.role].map(([id, label]) =>
@@ -313,7 +394,7 @@ function toggleRow(id, draw) {
 
 function shipperRow(l) {
   const c = shipColor(l), pc = l.price_check;
-  const driver = l.driver ? `<div class="cell-title">${esc(l.driver.name)}</div>
+  const driver = l.driver ? `<div class="cell-title">${esc(l.driver.name)}</div><div>${stars(l.driver.rating)}</div>
       <div class="line"><span class="ico">☎</span><a href="tel:+995${esc(l.driver.phone)}">${esc(l.driver.phone)}</a></div>
       <div class="muted small">${esc(l.driver.legal_status_label)}</div>
       ${l.vehicle ? `<div class="small">${esc(l.vehicle.truck_label)}${l.vehicle.plate ? " · " + esc(l.vehicle.plate) : ""}</div>` : ""}`
@@ -323,6 +404,7 @@ function shipperRow(l) {
       <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div>
       <div class="muted small">შექმნილია ${esc((l.created_at || "").slice(0, 10))}</div></div>
     <div><span class="status" style="--c:${c}">${esc(l.status_label)}</span>
+      ${l.pod ? `<div><span class="chip ${l.pod.problems.length ? "bad" : "go"}">დოკუმენტი ${l.pod.problems.length ? "⚠" : "✓"}</span></div>` : ""}
       ${l.needs_liftgate ? `<div><span class="chip">ჰიდრ. ბორტი</span></div>` : ""}${l.hazmat ? `<div><span class="chip bad">სახიფათო</span></div>` : ""}</div>
     <div><div class="label-sm">აღება</div>
       <div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
@@ -351,7 +433,9 @@ async function loadDetail(l) {
     box.innerHTML = l.status === "cancelled" ? `<p class="muted">ტვირთი გაუქმებულია.</p>` :
       `<div class="pills" style="margin:10px 0 0">${steps.map((s, i) =>
         `<span class="pill" style="--c:${i <= at ? "#34C17B" : "#3A4A5E"}"><span class="dot"></span>${s[1]}</span>`).join("")}</div>
-       <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>`;
+       <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>` +
+      podBlock(l) + (l.can_rate ? ratingForm(l.id, "მძღოლი") : l.my_rating ? `<p>${given(l.my_rating)}</p>` : "");
+    wireRatings(box, refresh);
     return;
   }
   try {
@@ -360,7 +444,7 @@ async function loadDetail(l) {
         <th>აღებამდე</th><th>ფასი</th><th>შეფასება</th><th>შეტყობინება</th><th></th></tr></thead><tbody>
         ${r.offers.map((o) => `<tr class="${o.id === r.recommended_offer_id ? "best" : ""}">
           <td>${o.id === r.recommended_offer_id ? `<span class="chip go">რეკომენდებული</span><br>` : ""}<b>${esc(o.driver_name)}</b>
-            <div class="muted small">${esc(o.legal_status_label)}${o.is_demo ? " · სიმულაცია" : ""}</div></td>
+            <div>${stars(o.driver_rating)}</div><div class="muted small">${esc(o.legal_status_label)}${o.is_demo ? " · სიმულაცია" : ""}</div></td>
           <td>${esc(o.truck_label)}<div class="muted small">${fmt(o.capacity_kg)} კგ</div></td>
           <td class="num">${o.km_to_pickup != null ? fmt(o.km_to_pickup) + " კმ" : "—"}<div class="muted small">${esc(o.vehicle_city_label)}</div></td>
           <td class="money num">${gel(o.price_gel)}</td>
@@ -522,7 +606,8 @@ function driverRow(x) {
   const l = x.load, e = x.earnings, bad = e.driver_keeps_gel < 0;
   return `<div class="board-row cols-driver" style="--c:${bad ? "#FF7A59" : "#34C17B"}">
     <div><div class="cell-title">№${l.id}</div><div>${esc(l.cargo || "ტვირთი")}</div>
-      <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div></div>
+      <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div>
+      <div class="small">გამგზავნი ${stars(x.shipper_rating)}</div></div>
     <div><div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
       <div class="line"><span class="ico drop"></span><span>${esc(l.destination_label)}${l.delivery_address ? ", " + esc(l.delivery_address) : ""}</span></div>
       <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div></div>
@@ -566,6 +651,8 @@ async function renderTrips() {
         ${shown.map(tripRow).join("") || `<div class="empty"><b>აქ ჯერ არაფერია</b>ტვირთები ბირჟაზეა.</div>`}
       </div>`;
     wirePills(view, draw);
+    wireRatings(view, renderTrips);
+    wirePodForms(view, renderTrips);
     $$("[data-advance]", view).forEach((b) => b.onclick = async () => {
       try { await api(`/api/jobs/${b.dataset.advance}/advance`, { json: {} }); toast("სტატუსი განახლდა."); renderTrips(); }
       catch (err) { toast(err.message, true); }
@@ -580,17 +667,19 @@ async function renderTrips() {
 
 function tripRow(t) {
   const l = t.load, c = (TRIP_GROUPS.slice(1).find((g) => g[3](t)) || TRIP_GROUPS[0])[2];
-  const next = { booked: "✓ ავიღე ტვირთი", in_transit: "✓ მივიტანე" }[l.status];
+  const next = { booked: "✓ ავიღე ტვირთი" }[l.status];
   const action = t.kind === "offer"
     ? `<button class="btn sm danger" data-withdraw="${t.offer.id}">შეთავაზების გაუქმება</button>`
-    : next ? `<button class="btn sm go" data-advance="${l.id}">${next}</button>` : `<span class="chip go">დასრულებული</span>`;
+    : next ? `<button class="btn sm go" data-advance="${l.id}">${next}</button>`
+    : l.status === "in_transit" ? podForm(l.id)
+    : podBlock(l, true) + (l.can_rate ? ratingForm(l.id, "გამგზავნი") : l.my_rating ? given(l.my_rating) : `<span class="chip go">დასრულებული</span>`);
   return `<div class="board-row cols-trips" style="--c:${c}">
     <div><div class="cell-title">№${l.id}</div><span class="status" style="--c:${c}">${t.kind === "offer" ? "შეთავაზება" : esc(l.status_label)}</span>
       <div>${esc(l.cargo || "ტვირთი")}</div><div class="muted small">${fmt(l.weight_kg)} კგ · ${esc(l.truck_label)}</div></div>
     <div><div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
       <div class="line"><span class="ico drop"></span><span>${esc(l.destination_label)}${l.delivery_address ? ", " + esc(l.delivery_address) : ""}</span></div>
       <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div></div>
-    <div>${l.shipper ? `<div class="cell-title">${esc(l.shipper.name)}</div>
+    <div>${l.shipper ? `<div class="cell-title">${esc(l.shipper.name)}</div><div>${stars(l.shipper.rating)}</div>
       <div class="line"><span class="ico">☎</span><a href="tel:+995${esc(l.shipper.phone)}">${esc(l.shipper.phone)}</a></div>
       <div class="muted small">${esc(l.shipper.legal_status_label)}</div>` : `<span class="muted small">კონტაქტი ჯავშნის შემდეგ ჩანს</span>`}</div>
     <div class="money num">${gel(t.kind === "offer" ? t.offer.price_gel : l.agreed_price_gel)}

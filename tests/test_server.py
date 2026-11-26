@@ -24,7 +24,7 @@ def test_demo_accounts_are_made_on_an_empty_database(monkeypatch):
     monkeypatch.setenv("KARGONAUT_DEMO_SEED", "1")
     with TestClient(server.app) as c:   # runs the startup step
         health = c.get("/api/health").json()
-        assert health["users"] == 14 and health["loads"] == 10
+        assert health["users"] == 14 and health["loads"] == 19   # 10 open + 8 finished trips with ratings + 1 on the road
         me = c.post("/api/login", json={"phone": "599000001", "password": "demo1234"}).json()
         assert me["is_demo"] is True
 

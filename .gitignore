@@ -6,6 +6,8 @@ __pycache__/
 # The database (accounts, loads, offers): never committed
 data/*.db
 data/*.db-journal
+# Proof-of-delivery photos drivers upload
+data/pod/
 
 # Private documents and what Gemini read from them
 documents/*

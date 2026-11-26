@@ -269,6 +269,23 @@ a { color: var(--gold); }
   display: grid; place-items: center; font-weight: 700; font-size: 12px; white-space: nowrap; }
 .city-dot.has { background: var(--gold); color: var(--gold-ink); }
 
+/* ratings */
+.stars { color: var(--gold); font-weight: 700; white-space: nowrap; }
+.rate-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 10px 12px;
+  border: 1px dashed var(--gold); border-radius: 10px; background: var(--gold-soft); }
+.rate-form input { flex: 1 1 160px; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; background: var(--surface-2); }
+.star-pick { display: inline-flex; }
+.star-pick button { background: none; border: 0; font-size: 22px; line-height: 1; color: #3A4A5E; cursor: pointer; padding: 0 2px; }
+.star-pick button.on, .star-pick button:hover { color: var(--gold); }
+
+/* proof of delivery */
+.pod-box { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.pod-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.pod-box .finding { margin: 8px 0 0; }
+.pod-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--go);
+  border-radius: 10px; background: var(--go-soft); }
+.pod-form .label-sm { flex-basis: 100%; }
+
 /* new load: the fair-price bar */
 .range-bar { position: relative; height: 12px; border-radius: 6px; margin: 34px 0 32px; }
 .range-bar .fair { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--go); border-radius: 6px; }
