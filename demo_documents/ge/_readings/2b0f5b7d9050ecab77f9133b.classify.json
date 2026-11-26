@@ -1,0 +1,12 @@
+{
+  "answer": {
+    "kind": "proof_of_delivery",
+    "says_not_a_bol": false,
+    "title_as_printed": "მიღება-ჩაბარების აქტი / Proof of Delivery"
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 6.9,
+    "prompt_version": "2026-11-24b"
+  }
+}

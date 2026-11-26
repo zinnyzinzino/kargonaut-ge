@@ -1,0 +1,96 @@
+{
+    "currency": "GEL",
+    "description": "Freight-rate EVIDENCE for Georgian lanes. Every observation keeps its evidence type; never mix them.",
+    "evidence_types": {
+        "verified_completed_transaction": "Actual payment for a completed shipment, documented (rate confirmation, invoice). Strongest evidence.",
+        "published_tariff": "A company's listed price for a service. Not proof that loads move at that price.",
+        "advertised_quote": "A price shown in a freight listing. Asking price, not a completed deal.",
+        "simulated_transaction": "Fictional demo value. Never counts as market evidence.",
+        "published_price_indicator": "A platform's published indicative price for a route. Not proof of a completed deal."
+    },
+    "benchmark_rule": {
+        "market_average_requires": "at least 3 verified_completed_transaction observations on the same lane and direction, compatible truck type and weight, within the last 180 days",
+        "otherwise": "report the individual observations with their evidence types and say that no market average can be given"
+    },
+    "observations": [
+        {
+            "id": "GE-AD-001",
+            "geography": "domestic_georgia",
+            "origin": "Batumi",
+            "destination": "Tbilisi",
+            "truck_type": null,
+            "cargo_type": "general_freight",
+            "max_weight_kg": 8000,
+            "rate": 600,
+            "currency": "GEL",
+            "source_type": "advertised_quote",
+            "source": "gancxadebebi.ge classified advertisement GEO1442910",
+            "source_url": "https://gancxadebebi.ge/en/classified-ads/Cargo-transportation-from-Batumi-to-Tbilisi-GEO1442910",
+            "observed_on": "2026-11-19",
+            "original_publication_date": null,
+            "verified": false,
+            "is_simulated": false,
+            "service_details": "Up to 8 t for a fixed 600 GEL; service Mondays and Thursdays; delivery throughout Tbilisi.",
+            "notes": "Looks like a scheduled/consolidated route service rather than a dedicated truck, which may explain the low price. Listing, not a verified transaction; vehicle type unknown."
+        },
+        {
+            "id": "GE-INT-001",
+            "geography": "international_to_georgia",
+            "origin": "Samsun",
+            "destination": "Batumi",
+            "truck_type": "tent_truck_reference",
+            "cargo_type": null,
+            "max_weight_kg": null,
+            "rate": 1450,
+            "currency": "USD",
+            "source_type": "published_price_indicator",
+            "source": "Translive Live Market Prices",
+            "source_url": "https://translive.ge/en/top-destination",
+            "observed_on": "2026-11-19",
+            "original_publication_date": null,
+            "verified": false,
+            "is_simulated": false,
+            "service_details": "Basic price calculated on a tent truck.",
+            "notes": "International indicator; not applicable to domestic Georgian freight."
+        },
+        {
+            "id": "GE-INT-002",
+            "geography": "international_to_georgia",
+            "origin": "Konya",
+            "destination": "Tbilisi",
+            "truck_type": "tent_truck_reference",
+            "cargo_type": null,
+            "max_weight_kg": null,
+            "rate": 2250,
+            "currency": "USD",
+            "source_type": "published_price_indicator",
+            "source": "Translive Live Market Prices",
+            "source_url": "https://translive.ge/en/top-destination",
+            "observed_on": "2026-11-19",
+            "original_publication_date": null,
+            "verified": false,
+            "is_simulated": false,
+            "service_details": "Basic price calculated on a tent truck.",
+            "notes": "International indicator; not applicable to domestic Georgian freight."
+        }
+    ],
+    "schema_note": "observed_on = date the listing was seen; original_publication_date = when it was posted (often unknown). geography separates domestic and international lanes.",
+    "reference_sources": [
+        {
+            "name": "CPP Georgian Construction Pricing Portal — First-Class Cargo Transportation (2026)",
+            "url": "https://cpp.procurement.gov.ge/tables/a318d588-a7cb-4ea3-9b1e-c0993525b325",
+            "use": "Official GEL transport pricing by distance and road category. Possible cross-check for Kargonaut's cost-per-km assumptions; not city-pair carrier payments."
+        },
+        {
+            "name": "Transinfo Georgia",
+            "url": "https://www.transinfo.ge/transport",
+            "use": "Freight listings; many show 'Price request' with no number."
+        },
+        {
+            "name": "Flagma Georgia",
+            "url": "https://flagma-ge.com/en/cargoes-tbilisi-batumi.html",
+            "use": "Freight listings; no matching Tbilisi–Batumi loads when checked on 2026-11-19."
+        }
+    ],
+    "verification_status": "All URLs and values compiled 2026-11-19 by another AI assistant; re-open each link and keep a screenshot before relying on it."
+}

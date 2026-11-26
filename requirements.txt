@@ -1,0 +1,9 @@
+google-genai==2.34.0
+python-dotenv==1.2.4
+fastapi==0.163.1
+uvicorn==0.54.0
+langgraph==1.2.24
+python-multipart==0.0.33
+langchain-core==1.8.0
+pypdf==7.1.0
+numpy==2.5.4

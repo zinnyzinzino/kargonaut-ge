@@ -1,0 +1,171 @@
+"""The shipper's assistant: tools for a person or entrepreneur (ინდ. მეწარმე) who sends freight.
+
+Docstrings are prompts: Gemini reads them to choose a tool. Every number comes from core/pricing.py or the
+database. The only tool that leads to a change is propose_load, and it makes a DRAFT the user confirms.
+Accepting a driver's offer is a button on the site, never a tool.
+"""
+from ai.common import date_said, me, needs_input, number_said
+from core.geo import CITY_KA, approach_leg, city
+from core.matching import compatibility_issues
+from core.pricing import compare_types, fair_price
+from core.vehicles import TRUCK_TYPES_TEXT, truck_type
+
+import db
+import marketplace
+
+
+def _cities(origin_city, destination_city):
+    origin, dest = city(origin_city), city(destination_city)
+    missing = [f for f, v in (("origin_city", origin), ("destination_city", dest)) if not v]
+    return origin, dest, missing
+
+
+def estimate_price(origin_city: str = "", destination_city: str = "", truck_type: str = "", weight_kg: int = 0,
+                   price_gel: float = 0) -> dict:
+    """Fair price range for moving a load between two Georgian cities, from real road distances and cost
+    estimates. Use for "how much would it cost?", "is 600 lari fair?", "which truck do I need for 3 tons?".
+    truck_type: Dry van, Refrigerated, Flatbed, Box truck or Sprinter van; leave it empty to compare every type
+    that can carry the weight (then say which type is cheapest and which can't carry it).
+    price_gel: a price the user has in mind or was quoted; the result's verdict says whether it is fair.
+    Never give a price yourself: only the numbers in this result."""
+    origin, dest, missing = _cities(origin_city, destination_city)
+    if missing:
+        return needs_input(missing, "საიდან სადამდე უნდა წავიდეს ტვირთი?")
+    if origin == dest:
+        return {"error": "Pickup and delivery are the same city: in-city moves aren't offered yet."}
+    weight = int(weight_kg or 0) or None
+    if not truck_type:
+        return compare_types(origin, dest, weight, price_gel or None)
+    kind = _type(truck_type)
+    if not kind:
+        return {"error": f"Unknown truck type '{truck_type}'. Known: {TRUCK_TYPES_TEXT}."}
+    return fair_price(origin, dest, kind, weight, price_gel or None)
+
+
+def _type(value):
+    """The module's truck_type() (the tools' own parameter of that name hides it inside them)."""
+    return truck_type(value)
+
+
+def available_vehicles(city_name: str = "", truck_type: str = "", weight_kg: int = 0) -> dict:
+    """How many free registered vehicles could take a load picked up in this city, and how far the nearest are.
+    Use for "are there trucks in Kutaisi?", "how soon could someone come?". Shows no names or phone numbers:
+    drivers' contacts are shared only after a booking."""
+    where = city(city_name)
+    if not where:
+        return needs_input(["city_name"], "რომელი ქალაქიდან უნდა აიღონ ტვირთი?")
+    kind = _type(truck_type) if truck_type else None
+    if truck_type and not kind:
+        return {"error": f"Unknown truck type '{truck_type}'. Known: {TRUCK_TYPES_TEXT}."}
+    load = {"truck_type": kind, "weight_kg": int(weight_kg or 0)}
+    found = []
+    for v in db.rows("SELECT * FROM vehicles WHERE available = 1"):
+        if kind and compatibility_issues(v, {**load, "truck_type": kind}):
+            continue
+        if not kind and v["capacity_kg"] < load["weight_kg"]:
+            continue
+        leg = approach_leg(v["city"], where)
+        found.append({"truck_type": v["truck_type"], "capacity_kg": v["capacity_kg"], "city": v["city"],
+                      "km_to_pickup": leg["distance_km"], "minutes_to_pickup": leg["duration_minutes"]})
+    found.sort(key=lambda f: f["km_to_pickup"])
+    return {"pickup_city": where, "truck_type": kind, "weight_kg": load["weight_kg"] or None,
+            "available_vehicles": len(found), "nearest": found[:5],
+            "note": "Registered vehicles marked free by their drivers; a driver still has to offer on the load."}
+
+
+def propose_load(origin_city: str = "", destination_city: str = "", truck_type: str = "", weight_kg: int = 0,
+                 pickup_date: str = "", pickup_date_words: str = "", price_gel: float = 0, cargo: str = "",
+                 pieces: int = 0, needs_liftgate: bool = False, hazmat: bool = False, notes: str = "",
+                 replaces_draft_id: str = "") -> dict:
+    """Prepare a DRAFT of a new load for the user to post. Nothing is posted: the user presses
+    "დადასტურება" (Confirm) on the draft card. Never say it was posted.
+    Pass only values the user gave. pickup_date: YYYY-MM-DD, converted from the user's words; pickup_date_words:
+    the user's exact words for the day (e.g. "ხვალ", "5 დეკემბერს"). price_gel: the price the USER chose; if they
+    haven't chosen one, leave it 0: the result gives the fair range to suggest, and the user decides.
+    weight_kg in kilograms (5 ტონა = 5000). To change a draft that isn't confirmed yet, call again with ALL values
+    and replaces_draft_id = the previous draft's draft_id."""
+    values = {"origin_city": origin_city, "destination_city": destination_city, "truck_type": truck_type,
+              "weight_kg": weight_kg or None, "pickup_date": pickup_date, "price_gel": price_gel or None,
+              "cargo": cargo, "pieces": pieces, "needs_liftgate": needs_liftgate, "hazmat": hazmat, "notes": notes}
+    result = marketplace.draft_load(me()["id"], values, replaces=replaces_draft_id)
+    if result.get("error_code") == "missing":
+        ask = needs_input(result["fields"], result["error"])
+        origin, dest, kind = city(origin_city), city(destination_city), _type(truck_type)
+        if "price_gel" in result["fields"] and origin and dest and origin != dest and kind:
+            r = fair_price(origin, dest, kind, int(weight_kg or 0) or None)
+            ask["fair_price_range_gel"] = r.get("fair_price_range_gel")
+            ask["how_to_answer"] = ("Suggest this fair range and ask the user which price to post; the user "
+                                    "decides the price.")
+        return ask
+    return result
+
+
+def my_loads(status: str = "") -> dict:
+    """The user's own loads with their status (open, booked, in_transit, delivered, cancelled) and how many
+    offers each has. status: empty = all."""
+    rows = marketplace.loads_of_shipper(me()["id"], status if status in marketplace.LOAD_STATUS_KA else "")
+    return {"total": len(rows), "loads": [{k: r.get(k) for k in (
+        "id", "origin_city", "destination_city", "truck_type", "weight_kg", "pickup_date", "price_gel",
+        "status_label", "pending_offers", "agreed_price_gel", "cargo")} for r in rows]}
+
+
+def offers_for_my_load(load_id: int) -> dict:
+    """Drivers' offers on one of the user's loads, with recommended_offer_id (lowest price; on a tie the closer
+    vehicle) and whether each price is fair. Recommend that offer first, then the runner-up in one line. To book
+    a driver the user presses "მიღება" (Accept) next to the offer: you can't book for them."""
+    return marketplace.offers_for_load(me()["id"], int(load_id))
+
+
+TOOLS = [estimate_price, available_vehicles, propose_load, my_loads, offers_for_my_load]
+
+
+def _guard_propose_load(args, said):
+    """A date, price or weight the user never wrote is dropped, so the tool asks for it."""
+    notes = {}
+    if args.get("pickup_date") and not date_said(args["pickup_date"], args.get("pickup_date_words", ""), said):
+        args["pickup_date"] = ""
+        notes["pickup_date_rejected"] = "The user hasn't given a pickup date in their own words. Ask them."
+    if args.get("price_gel") and not number_said(args["price_gel"], said):
+        args["price_gel"] = 0
+        notes["price_rejected"] = "The user hasn't chosen this price. Suggest the fair range and ask them."
+    if args.get("weight_kg") and not number_said(args["weight_kg"], said, tons=True):
+        args["weight_kg"] = 0
+        notes["weight_rejected"] = "The user hasn't said this weight. Ask them."
+    return args, notes
+
+
+GUARDS = {"propose_load": _guard_propose_load}
+
+
+def system_prompt(user, today):
+    return f"""You are Kargonaut, the assistant of a Georgian freight marketplace. You help {user['name']}, who
+SENDS freight inside Georgia (a person, an individual entrepreneur or a small company). Independent drivers
+carry the loads; the shipper posts a load with a price, drivers accept it or offer their own price, and the
+shipper accepts one offer. Today is {today}.
+
+LANGUAGE
+- Always reply in natural, plain Georgian, whatever language the user writes in. Short and clear: the answer
+  first, then the reasons. Prices as "650 ₾". Truck types stay in English exactly as the tools write them
+  (Dry van, Refrigerated, Flatbed, Box truck, Sprinter van). Cities in Georgian.
+
+FACTS
+- Every price, distance, vehicle and load fact comes from a tool result. Never estimate or calculate money
+  yourself. Cities served: {", ".join(CITY_KA.values())}.
+- Never fill in a tool argument the user did not give (city, weight, date, price). If a tool returns
+  needs_input, ask the user exactly that (ask_user), in Georgian.
+- A fair price is a range from estimate_price. Say it is an estimate (costs are simulated assumptions; road
+  distances are real). Never present it as a market price unless the tool gives a market_average.
+
+WHICH TOOL
+- "How much would it cost?", "is this price fair?", "which truck do I need?" -> estimate_price
+- "Are there trucks in X?", "how soon can someone come?" -> available_vehicles
+- "Post / add a load", "I need to send ..." -> propose_load. It only prepares a DRAFT: say the user must press
+  „დადასტურება“ to post it. If the price is missing, give the fair range from the result and let the user choose.
+- "My loads", "what's happening with my load?" -> my_loads
+- "Who offered?", "which driver should I take?" -> offers_for_my_load; recommend recommended_offer_id first.
+  Booking is the user's own button („მიღება“ next to the offer); never say a driver was booked.
+
+GEORGIAN TERMS
+- load -> "ტვირთი"; truck/vehicle -> "მანქანა" or "სატვირთო"; driver -> "მძღოლი"; offer -> "შეთავაზება"
+- fair price range -> "სამართლიანი ფასის დიაპაზონი"; draft -> "მონახაზი"; pickup -> "აღება"; delivery -> "მიტანა"
+"""

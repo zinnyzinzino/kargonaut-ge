@@ -1,0 +1,12 @@
+{
+  "answer": {
+    "kind": "bill_of_lading",
+    "says_not_a_bol": false,
+    "title_as_printed": "კონოსამენტი Bill of Lading"
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 8.3,
+    "prompt_version": "2026-11-24b"
+  }
+}

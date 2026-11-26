@@ -1,0 +1,56 @@
+{
+  "answer": {
+    "issuer": "Colchis Forwarding LLC",
+    "issued_date": "2026-11-27",
+    "load_number": "KF/2026/0412",
+    "references": [
+      {
+        "label": "PO",
+        "value": "RPW-7714"
+      }
+    ],
+    "carrier": "Lomi Trans Group LLC",
+    "pickup": {
+      "name": "Rustavi Pipe Works LLC",
+      "address": "რუსთავი, მესხიშვილის ქ. 3",
+      "date": "2026-12-02",
+      "time": "08:00–10:00"
+    },
+    "delivery": {
+      "name": "Zestafoni Building Supply LLC",
+      "address": "ზესტაფონი, აღმაშენებლის ქ. 41",
+      "date": "2026-12-02",
+      "time": "15:00"
+    },
+    "commodity": "ფოლადის მილები / Steel pipes",
+    "equipment": "Flatbed",
+    "pieces": 22,
+    "packages": [
+      {
+        "type": "შეკვრა",
+        "count": 22
+      }
+    ],
+    "weight_as_printed": "14 000 კგ",
+    "weight": 14000,
+    "weight_unit": "kg",
+    "rate": 760.0,
+    "currency": "GEL",
+    "signatures": [
+      {
+        "role": "carrier",
+        "mark": "empty",
+        "signed": false,
+        "name": null,
+        "initials": null,
+        "date": null
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 43.4,
+    "prompt_version": "2026-11-24b"
+  }
+}

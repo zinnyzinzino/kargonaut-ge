@@ -1,0 +1,80 @@
+{
+  "answer": {
+    "issuer": "Batumi Coastal Distribution LLC",
+    "issued_date": "2026-12-01",
+    "load_number": null,
+    "references": [
+      {
+        "label": "№",
+        "value": "BOL-0112-034"
+      },
+      {
+        "label": "სახ. ნომერი / Truck plate",
+        "value": "KG-204-KG"
+      },
+      {
+        "label": "შეკვეთის ნომერი / Order (PO)",
+        "value": "ZD-20931"
+      }
+    ],
+    "carrier": "KARGONAUT LOGISTICS",
+    "pickup": {
+      "name": "Batumi Coastal Distribution LLC",
+      "address": "ქ. ბათუმი, ფარნავაზ მეფის ქუჩა №112, საწყობი 3",
+      "date": null,
+      "time": null
+    },
+    "delivery": {
+      "name": "Imereti Trade House LLC",
+      "address": "ქ. ქუთაისი, შოთა რუსთაველის გამზირი №8",
+      "date": null,
+      "time": null
+    },
+    "commodity": "საყოფაცხოვრებო ტექნიკა / Household appliances",
+    "equipment": null,
+    "pieces": 16,
+    "packages": [
+      {
+        "type": "პალეტი",
+        "count": 16
+      }
+    ],
+    "weight_as_printed": "8 000 კგ",
+    "weight": 8000.0,
+    "weight_unit": "kg",
+    "rate": null,
+    "currency": null,
+    "signatures": [
+      {
+        "role": "shipper",
+        "mark": "signature",
+        "signed": true,
+        "name": "მარიამ ბოლქვაძე",
+        "initials": null,
+        "date": "2026-12-01"
+      },
+      {
+        "role": "driver",
+        "mark": "signature",
+        "signed": true,
+        "name": "დავით ნოზაძე",
+        "initials": null,
+        "date": "2026-12-01"
+      },
+      {
+        "role": "receiver",
+        "mark": "empty",
+        "signed": false,
+        "name": null,
+        "initials": null,
+        "date": null
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 24.1,
+    "prompt_version": "2026-11-24b"
+  }
+}

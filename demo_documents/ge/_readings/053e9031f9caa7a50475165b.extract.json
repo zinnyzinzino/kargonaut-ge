@@ -1,0 +1,56 @@
+{
+  "answer": {
+    "issuer": "Rioni Cargo LLC",
+    "issued_date": "2026-11-27",
+    "load_number": "RCD-55187",
+    "references": [
+      {
+        "label": "PO",
+        "value": "KBC-1190"
+      }
+    ],
+    "carrier": "Kargonaut Logistics LLC",
+    "pickup": {
+      "name": "Kutaisi Building Centre LLC",
+      "address": "ქუთაისი, ჯავახიშვილის ქ. 33",
+      "date": "2026-12-04",
+      "time": "09:00"
+    },
+    "delivery": {
+      "name": "Gori Market LLC",
+      "address": "გორი, ჭავჭავაძის ქ. 15",
+      "date": "2026-12-04",
+      "time": "15:00"
+    },
+    "commodity": "სამშენებლო მასალა / Building materials",
+    "equipment": "Dry van",
+    "pieces": 20,
+    "packages": [
+      {
+        "type": "პალეტი",
+        "count": 20
+      }
+    ],
+    "weight_as_printed": null,
+    "weight": null,
+    "weight_unit": null,
+    "rate": 550.0,
+    "currency": "GEL",
+    "signatures": [
+      {
+        "role": "carrier",
+        "mark": "typed_name",
+        "signed": true,
+        "name": "N. Kapanadze",
+        "initials": null,
+        "date": "2026-11-27"
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 20.3,
+    "prompt_version": "2026-11-24b"
+  }
+}

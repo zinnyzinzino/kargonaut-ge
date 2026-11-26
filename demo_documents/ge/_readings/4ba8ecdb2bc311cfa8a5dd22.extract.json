@@ -1,0 +1,56 @@
+{
+  "answer": {
+    "issuer": "Rioni Cargo LLC",
+    "issued_date": "2026-11-27",
+    "load_number": "RCD-55120",
+    "references": [
+      {
+        "label": "PO",
+        "value": "ZD-20931"
+      }
+    ],
+    "carrier": "Kargonaut Logistics LLC",
+    "pickup": {
+      "name": "Batumi Coastal Distribution LLC",
+      "address": "ბათუმი, ფარნავაზ მეფის ქ. 112",
+      "date": "2026-12-01",
+      "time": "10:00"
+    },
+    "delivery": {
+      "name": "Imereti Trade House LLC",
+      "address": "ქუთაისი, რუსთაველის გამზ. 8",
+      "date": "2026-12-01",
+      "time": "16:00"
+    },
+    "commodity": "საყოფაცხოვრებო ტექნიკა / Household appliances",
+    "equipment": "Dry van",
+    "pieces": 16,
+    "packages": [
+      {
+        "type": "პალეტი",
+        "count": 16
+      }
+    ],
+    "weight_as_printed": "8 000 კგ",
+    "weight": 8000,
+    "weight_unit": "kg",
+    "rate": 590,
+    "currency": "GEL",
+    "signatures": [
+      {
+        "role": "carrier",
+        "mark": "signature",
+        "signed": true,
+        "name": "ნინო კაპანაძე",
+        "initials": null,
+        "date": "2026-11-27"
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 37.5,
+    "prompt_version": "2026-11-24b"
+  }
+}

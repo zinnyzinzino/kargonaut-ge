@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kargonaut — ტვირთი და მძღოლი ერთ ადგილას</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚚</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Kargonaut <span>საქართველო</span></div>
+  <div id="who" class="who"></div>
+</header>
+
+<!-- ================= not signed in ================= -->
+<main id="landing" class="page hidden">
+  <section class="hero">
+    <h1>ტვირთი და მძღოლი ერთ ადგილას</h1>
+    <p>გამგზავნები — ფიზიკური პირები, ინდ. მეწარმეები და მცირე კომპანიები — აქვეყნებენ ტვირთს.
+       დამოუკიდებელი მძღოლები ხედავენ, რამდენი დარჩებათ თითოეულ რეისზე, და სთავაზობენ ფასს.
+       AI ასისტენტი გეხმარებათ, მაგრამ ფასს და გადაწყვეტილებას ყოველთვის თქვენ იღებთ.</p>
+  </section>
+  <section class="cards">
+    <div class="card role-card">
+      <h2>📦 ვგზავნი ტვირთს</h2>
+      <p>გამოაქვეყნეთ ტვირთი, ნახეთ სამართლიანი ფასი და აირჩიეთ მძღოლი შეთავაზებებიდან.</p>
+      <button onclick="showAuth('register','shipper')">რეგისტრაცია გამგზავნად</button>
+    </div>
+    <div class="card role-card">
+      <h2>🚚 ვარ მძღოლი</h2>
+      <p>დაამატეთ მანქანა, ნახეთ ტვირთები თქვენთვის და რამდენი დაგრჩებათ ხარჯების შემდეგ.</p>
+      <button onclick="showAuth('register','driver')">რეგისტრაცია მძღოლად</button>
+    </div>
+  </section>
+  <section class="card" id="auth">
+    <div class="tabs">
+      <button id="tab-login" class="tab active" onclick="showAuth('login')">შესვლა</button>
+      <button id="tab-register" class="tab" onclick="showAuth('register')">რეგისტრაცია</button>
+    </div>
+    <form id="login-form" onsubmit="return doLogin(event)">
+      <label>მობილური <input name="phone" inputmode="tel" placeholder="5XX XX XX XX" required></label>
+      <label>პაროლი <input name="password" type="password" required></label>
+      <button>შესვლა</button>
+      <p class="hint">სადემონსტრაციო ანგარიშები (სიმულაცია): გამგზავნი <b>599000001</b>, მძღოლი <b>599000005</b>,
+         პაროლი <b>demo1234</b></p>
+    </form>
+    <form id="register-form" class="hidden" onsubmit="return doRegister(event)">
+      <label>ვინ ხართ?
+        <select name="role"><option value="shipper">ტვირთის გამგზავნი</option><option value="driver">მძღოლი</option></select>
+      </label>
+      <label>სახელი და გვარი (ან კომპანია) <input name="name" required></label>
+      <label>სტატუსი <select name="legal_status" id="legal-select"></select></label>
+      <label>მობილური <input name="phone" inputmode="tel" placeholder="5XX XX XX XX" required></label>
+      <label>ქალაქი <select name="city" class="city-select"></select></label>
+      <label>პაროლი (მინ. 8 სიმბოლო) <input name="password" type="password" minlength="8" required></label>
+      <button>რეგისტრაცია</button>
+    </form>
+    <p id="auth-error" class="error"></p>
+  </section>
+  <section class="card">
+    <h2>რა ღირს გადაზიდვა?</h2>
+    <form class="row" onsubmit="return calcPrice(event)">
+      <label>საიდან <select name="origin" class="city-select"></select></label>
+      <label>სადამდე <select name="destination" class="city-select"></select></label>
+      <label>წონა (კგ) <input name="weight_kg" type="number" min="1" placeholder="5000"></label>
+      <button>გამოთვლა</button>
+    </form>
+    <div id="calc-result"></div>
+  </section>
+</main>
+
+<!-- ================= signed in ================= -->
+<main id="app" class="page hidden">
+  <div class="layout">
+    <section class="work">
+      <nav class="tabs" id="app-tabs"></nav>
+
+      <!-- shipper -->
+      <div id="view-my-loads" class="view hidden">
+        <h2>ჩემი ტვირთები</h2>
+        <div id="my-loads"></div>
+      </div>
+      <div id="view-new-load" class="view hidden">
+        <h2>ახალი ტვირთი</h2>
+        <form id="load-form" class="grid" onsubmit="return postLoad(event)" oninput="loadHint()">
+          <label>საიდან <select name="origin_city" class="city-select"></select></label>
+          <label>სადამდე <select name="destination_city" class="city-select"></select></label>
+          <label>მანქანის ტიპი <select name="truck_type" class="type-select"></select></label>
+          <label>წონა (კგ) <input name="weight_kg" type="number" min="1" required></label>
+          <label>აღების თარიღი <input name="pickup_date" type="date" required></label>
+          <label>ფასი (₾) <input name="price_gel" type="number" min="1" required></label>
+          <label>რა არის ტვირთი <input name="cargo" placeholder="მაგ. ავეჯი"></label>
+          <label>ადგილების რაოდენობა <input name="pieces" type="number" min="0"></label>
+          <label>აღების მისამართი <input name="pickup_address"></label>
+          <label>მიტანის მისამართი <input name="delivery_address"></label>
+          <label class="check"><input type="checkbox" name="needs_liftgate"> საჭიროა ჰიდრავლიკური ბორტი</label>
+          <label class="check"><input type="checkbox" name="hazmat"> სახიფათო ტვირთი</label>
+          <label class="wide">შენიშვნა <input name="notes"></label>
+          <div id="load-hint" class="wide hint-box"></div>
+          <button class="wide">გამოქვეყნება</button>
+        </form>
+      </div>
+
+      <!-- driver -->
+      <div id="view-open-loads" class="view hidden">
+        <h2>ტვირთები ჩემთვის</h2>
+        <form class="row" onsubmit="return loadOpen(event)">
+          <label>სად ვიქნები <select name="near_city" class="city-select" data-any="ახლა სადაც ვარ"></select></label>
+          <label>მივდივარ (უკან) <select name="heading_to" class="city-select" data-any="ნებისმიერი"></select></label>
+          <button>ძებნა</button>
+        </form>
+        <div id="open-loads"></div>
+      </div>
+      <div id="view-jobs" class="view hidden">
+        <h2>ჩემი სამუშაოები</h2>
+        <div id="jobs"></div>
+      </div>
+      <div id="view-vehicles" class="view hidden">
+        <h2>ჩემი მანქანები</h2>
+        <div id="vehicles"></div>
+        <h3>მანქანის დამატება</h3>
+        <form class="grid" onsubmit="return addVehicle(event)">
+          <label>ტიპი <select name="truck_type" class="type-select"></select></label>
+          <label>ტვირთამწეობა (კგ) <input name="capacity_kg" type="number" min="100" required></label>
+          <label>სად დგას ახლა <select name="city" class="city-select"></select></label>
+          <label>სახელმწიფო ნომერი <input name="plate" placeholder="AA-123-BB"></label>
+          <label>საწვავი, ლ/100კმ (არასავალდ.) <input name="fuel_l_per_100km" type="number" step="0.1"></label>
+          <label>ცვეთა, ₾/კმ (არასავალდ.) <input name="cost_per_km" type="number" step="0.01"></label>
+          <label class="check"><input type="checkbox" name="liftgate"> ჰიდრავლიკური ბორტი</label>
+          <label class="check"><input type="checkbox" name="hazmat"> სახიფათო ტვირთის ნებართვა</label>
+          <button class="wide">დამატება</button>
+        </form>
+      </div>
+
+      <!-- both -->
+      <div id="view-docs" class="view hidden">
+        <h2>დოკუმენტების შემოწმება</h2>
+        <p class="hint">ატვირთეთ ერთი ტვირთის დოკუმენტები (PDF ან ფოტო, მაქს. 5): AI წაიკითხავს, Python
+           შეადარებს ერთმანეთს. არაფერი ინახება.</p>
+        <form class="row" onsubmit="return checkDocs(event)">
+          <input type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.webp">
+          <button>შემოწმება</button>
+        </form>
+        <div id="demo-docs" class="hint"></div>
+        <div id="doc-result"></div>
+      </div>
+    </section>
+
+    <aside class="chat card">
+      <div class="chat-head"><b>AI ასისტენტი</b> <button class="link" onclick="resetChat()">ახალი საუბარი</button></div>
+      <div id="chat-log" class="chat-log"></div>
+      <form class="chat-form" onsubmit="return sendChat(event)">
+        <input id="chat-input" autocomplete="off" placeholder="დაწერეთ…">
+        <button>➤</button>
+      </form>
+    </aside>
+  </div>
+</main>
+
+<script>
+// ---------------------------------------------------------------- basics
+let ME = null, META = null;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const gel = x => x == null ? "—" : `${Math.round(x).toLocaleString("ka-GE")} ₾`;
+
+async function api(path, options = {}) {
+  const init = {credentials: "same-origin", ...options};
+  if (options.json !== undefined) {
+    init.method = init.method || "POST";
+    init.headers = {"Content-Type": "application/json"};
+    init.body = JSON.stringify(options.json);
+  }
+  const res = await fetch(path, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || "შეცდომა, სცადეთ თავიდან.");
+  return data;
+}
+const formData = form => Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, v]));
+function checkboxes(form, data) {
+  form.querySelectorAll("input[type=checkbox]").forEach(c => data[c.name] = c.checked);
+  return data;
+}
+function fail(el, err) { el.innerHTML = `<p class="error">${esc(err.message)}</p>`; }
+
+function fillSelects() {
+  document.querySelectorAll(".city-select").forEach(sel => {
+    const any = sel.dataset.any ? `<option value="">${esc(sel.dataset.any)}</option>` : "";
+    sel.innerHTML = any + META.cities.map(c => `<option value="${c.name}">${esc(c.label)}</option>`).join("");
+  });
+  document.querySelectorAll(".type-select").forEach(sel =>
+    sel.innerHTML = META.truck_types.map(t => `<option value="${t.code}">${esc(t.label)}</option>`).join(""));
+  $("#legal-select").innerHTML = Object.entries(META.legal_statuses).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  const dest = document.querySelectorAll("select[name=destination], select[name=destination_city]");
+  dest.forEach(sel => sel.selectedIndex = 2);   // a different city than the origin by default
+}
+
+// ---------------------------------------------------------------- landing and accounts
+function showAuth(which, role) {
+  $("#tab-login").classList.toggle("active", which === "login");
+  $("#tab-register").classList.toggle("active", which === "register");
+  $("#login-form").classList.toggle("hidden", which !== "login");
+  $("#register-form").classList.toggle("hidden", which !== "register");
+  if (role) $("#register-form [name=role]").value = role;
+  $("#auth").scrollIntoView({behavior: "smooth"});
+}
+async function doLogin(e) {
+  e.preventDefault();
+  try { ME = await api("/api/login", {json: formData(e.target)}); start(); }
+  catch (err) { $("#auth-error").textContent = err.message; }
+  return false;
+}
+async function doRegister(e) {
+  e.preventDefault();
+  try { ME = await api("/api/register", {json: formData(e.target)}); start(); }
+  catch (err) { $("#auth-error").textContent = err.message; }
+  return false;
+}
+async function logout() { await api("/api/logout", {json: {}}); ME = null; start(); }
+
+async function calcPrice(e) {
+  e.preventDefault();
+  const f = formData(e.target), out = $("#calc-result");
+  try {
+    const r = await api(`/api/price?origin=${f.origin}&destination=${f.destination}&weight_kg=${f.weight_kg || 0}`);
+    out.innerHTML = `<table><tr><th>მანქანა</th><th>სამართლიანი ფასი</th></tr>` +
+      r.options.map(o => `<tr><td>${esc(META.truck_types.find(t => t.code === o.truck_type).label)}</td>
+        <td>${gel(o.fair_price_range_gel[0])} – ${gel(o.fair_price_range_gel[1])}</td></tr>`).join("") + `</table>` +
+      `<p class="hint">შეფასება: გზის მანძილი რეალურია (OSRM), ხარჯები სიმულირებული დაშვებებია. ფასს მძღოლები და გამგზავნები თავად თანხმდებიან.</p>`;
+  } catch (err) { fail(out, err); }
+  return false;
+}
+
+// ---------------------------------------------------------------- the app
+const TABS = {
+  shipper: [["my-loads", "ჩემი ტვირთები", loadMyLoads], ["new-load", "ახალი ტვირთი", loadHint], ["docs", "დოკუმენტები", loadDemoDocs]],
+  driver: [["open-loads", "ტვირთები ჩემთვის", () => loadOpen()], ["jobs", "სამუშაოები", loadJobs],
+           ["vehicles", "მანქანები", loadVehicles], ["docs", "დოკუმენტები", loadDemoDocs]],
+};
+function showView(id) {
+  document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
+  $(`#view-${id}`).classList.remove("hidden");
+  document.querySelectorAll("#app-tabs .tab").forEach(t => t.classList.toggle("active", t.dataset.view === id));
+  TABS[ME.role].find(t => t[0] === id)[2]();
+}
+function start() {
+  $("#landing").classList.toggle("hidden", !!ME);
+  $("#app").classList.toggle("hidden", !ME);
+  if (!ME) { $("#who").innerHTML = ""; return; }
+  $("#who").innerHTML = `${esc(ME.name)} · ${ME.role === "shipper" ? "გამგზავნი" : "მძღოლი"}
+    ${ME.is_demo ? '<span class="badge">სადემონსტრაციო</span>' : ""} <button class="link" onclick="logout()">გასვლა</button>`;
+  $("#app-tabs").innerHTML = TABS[ME.role].map(([id, label]) => `<button class="tab" data-view="${id}" onclick="showView('${id}')">${label}</button>`).join("");
+  $("#chat-log").innerHTML = "";
+  say("bot", ME.role === "shipper"
+    ? "გამარჯობა! მომწერეთ, რა უნდა გაგზავნოთ, საიდან სადამდე: გეტყვით სამართლიან ფასს და მოგიმზადებთ ტვირთის მონახაზს."
+    : "გამარჯობა! მკითხეთ, რომელი ტვირთი გაწყობთ, ან რამდენი დაგრჩებათ კონკრეტულ რეისზე.");
+  showView(TABS[ME.role][0][0]);
+}
+
+function loadCard(l, extra = "") {
+  return `<div class="item">
+    <div class="item-head"><b>№${l.id} · ${esc(l.origin_label)} → ${esc(l.destination_label)}</b>
+      <span class="status s-${l.status}">${esc(l.status_label)}</span></div>
+    <div>${esc(l.truck_label)} · ${l.weight_kg.toLocaleString("ka-GE")} კგ${l.cargo ? " · " + esc(l.cargo) : ""} · აღება ${esc(l.pickup_date)}</div>
+    <div>ფასი: <b>${gel(l.agreed_price_gel ?? l.price_gel)}</b></div>${extra}</div>`;
+}
+function contact(person, title) {
+  return person ? `<div class="contact">${title}: <b>${esc(person.name)}</b> · ${esc(person.phone)}</div>` : "";
+}
+
+// shipper
+async function loadMyLoads() {
+  const el = $("#my-loads");
+  try {
+    const loads = await api("/api/loads/mine");
+    el.innerHTML = loads.length ? loads.map(l => loadCard(l,
+      (l.status === "open" ? `<div class="actions"><button onclick="showOffers(${l.id})">შეთავაზებები (${l.pending_offers})</button>
+        <button class="secondary" onclick="cancelLoad(${l.id})">გაუქმება</button></div><div id="offers-${l.id}"></div>` : "")
+      + contact(l.driver, "მძღოლი"))).join("") : `<p class="hint">ჯერ ტვირთი არ გაქვთ. დაამატეთ „ახალ ტვირთში“ ან მიწერეთ ასისტენტს.</p>`;
+  } catch (err) { fail(el, err); }
+}
+async function showOffers(loadId) {
+  const el = $(`#offers-${loadId}`);
+  try {
+    const r = await api(`/api/loads/${loadId}/offers`);
+    const range = r.price_check ? `<p class="hint">სამართლიანი ფასი: ${gel(r.price_check.fair_price_range_gel[0])} – ${gel(r.price_check.fair_price_range_gel[1])}</p>` : "";
+    el.innerHTML = range + (r.offers.length ? r.offers.map(o => `<div class="offer ${o.id === r.recommended_offer_id ? "best" : ""}">
+      ${o.id === r.recommended_offer_id ? '<span class="badge">რეკომენდებული</span> ' : ""}<b>${esc(o.driver_name)}</b> (${esc(o.legal_status_label)})
+      ${o.is_demo ? '<span class="badge grey">სიმულაცია</span>' : ""}<br>
+      ${esc(o.truck_label)}, ${o.capacity_kg.toLocaleString("ka-GE")} კგ · ${esc(o.vehicle_city_label)}, აღებამდე ${o.km_to_pickup} კმ<br>
+      ფასი: <b>${gel(o.price_gel)}</b> ${o.price_verdict_label ? `(${esc(o.price_verdict_label)})` : ""}
+      ${o.message ? `<br><i>„${esc(o.message)}“</i>` : ""}
+      <div class="actions"><button onclick="acceptOffer(${o.id})">მიღება</button></div></div>`).join("")
+      : `<p class="hint">ჯერ შეთავაზება არ არის.</p>`);
+  } catch (err) { fail(el, err); }
+}
+async function acceptOffer(id) {
+  if (!confirm("დავჯავშნოთ ეს მძღოლი? დანარჩენი შეთავაზებები უარყოფილი იქნება.")) return;
+  try { await api(`/api/offers/${id}/accept`, {json: {}}); loadMyLoads(); } catch (err) { alert(err.message); }
+}
+async function cancelLoad(id) {
+  if (!confirm("გავაუქმოთ ტვირთი?")) return;
+  try { await api(`/api/loads/${id}/cancel`, {json: {}}); loadMyLoads(); } catch (err) { alert(err.message); }
+}
+let hintTimer = null;
+function loadHint() {
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(async () => {
+    const f = formData($("#load-form")), el = $("#load-hint");
+    if (!$("#load-form [name=pickup_date]").value)
+      $("#load-form [name=pickup_date]").value = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    if (f.origin_city === f.destination_city) { el.innerHTML = "აირჩიეთ ორი სხვადასხვა ქალაქი."; return; }
+    try {
+      const r = await api(`/api/price?origin=${f.origin_city}&destination=${f.destination_city}&kind=${f.truck_type}&weight_kg=${f.weight_kg || 0}&price_gel=${f.price_gel || 0}`);
+      el.innerHTML = `სამართლიანი ფასი: <b>${gel(r.fair_price_range_gel[0])} – ${gel(r.fair_price_range_gel[1])}</b> (${r.loaded_km} კმ)` +
+        (r.verdict_label ? ` · თქვენი ფასი: <b>${esc(r.verdict_label)}</b>` : "") +
+        (r.too_heavy_for_typical_vehicle ? `<br>⚠️ ჩვეულებრივი ${esc(META.truck_types.find(t => t.code === f.truck_type).label)} ${r.typical_capacity_kg.toLocaleString("ka-GE")} კგ-ს წაიღებს.` : "") +
+        `<br><span class="hint">შეფასება სიმულირებული ხარჯებით; მანძილი რეალურია.</span>`;
+    } catch (err) { el.textContent = err.message; }
+  }, 300);
+}
+async function postLoad(e) {
+  e.preventDefault();
+  try {
+    await api("/api/loads", {json: checkboxes(e.target, formData(e.target))});
+    e.target.reset(); showView("my-loads");
+  } catch (err) { alert(err.message); }
+  return false;
+}
+
+// driver
+async function loadOpen(e) {
+  if (e) e.preventDefault();
+  const el = $("#open-loads"), form = $("#view-open-loads form");
+  const f = formData(form);
+  try {
+    const r = await api(`/api/loads/open?near_city=${f.near_city}&heading_to=${f.heading_to}`);
+    el.innerHTML = r.loads.length ? r.loads.map(x => {
+      const l = x.load, m = x.earnings;
+      return loadCard(l, `<div class="earn ${m.driver_keeps_gel < 0 ? "neg" : ""}">ცარიელი გარბენი ${m.empty_km} კმ · სულ ${m.total_km} კმ, ${m.driving_hours} სთ ·
+        ხარჯი ≈ ${gel(m.trip_costs_gel)} · <b>დაგრჩებათ ≈ ${gel(m.driver_keeps_gel)}</b> (${gel(m.per_driving_hour_gel)}/სთ)</div>
+        ${x.my_offer ? `<div class="hint">თქვენი შეთავაზება: ${gel(x.my_offer.price_gel)}</div>` : ""}
+        <form class="actions" onsubmit="return offer(event, ${l.id}, ${x.vehicle_id})">
+          <input name="price_gel" type="number" min="1" placeholder="${Math.round(l.price_gel)}" title="ცარიელი = გამგზავნის ფასი">
+          <input name="message" placeholder="შეტყობინება (არასავალდ.)">
+          <button>შეთავაზება</button></form>`);
+    }).join("") + `<p class="hint">ხარჯი: საწვავი, ცვეთა და რეისის ხარჯები (შეფასება). „დაგრჩებათ“ თქვენი დროის ანაზღაურებაა.</p>`
+      : `<p class="hint">ახლა თქვენი მანქანისთვის შესაფერისი ღია ტვირთი არ არის.</p>`;
+  } catch (err) { fail(el, err); }
+  return false;
+}
+async function offer(e, loadId, vehicleId) {
+  e.preventDefault();
+  const f = formData(e.target);
+  try {
+    await api(`/api/loads/${loadId}/offers`, {json: {price_gel: +f.price_gel || 0, vehicle_id: vehicleId, message: f.message}});
+    loadOpen();
+  } catch (err) { alert(err.message); }
+  return false;
+}
+async function loadJobs() {
+  const el = $("#jobs");
+  try {
+    const r = await api("/api/jobs");
+    const next = {booked: "ავიღე ტვირთი", in_transit: "მივიტანე"};
+    el.innerHTML = (r.jobs.length ? r.jobs.map(l => loadCard(l, contact(l.shipper, "გამგზავნი") +
+        (next[l.status] ? `<div class="actions"><button onclick="advance(${l.id})">${next[l.status]}</button></div>` : ""))).join("")
+        : `<p class="hint">ჯერ დაჯავშნილი ტვირთი არ გაქვთ.</p>`) +
+      `<h3>მოლოდინში მყოფი შეთავაზებები</h3>` + (r.pending_offers.length ? r.pending_offers.map(o => loadCard(o.load,
+        `<div>თქვენი ფასი: <b>${gel(o.price_gel)}</b></div><div class="actions"><button class="secondary" onclick="withdraw(${o.id})">გაუქმება</button></div>`)).join("")
+        : `<p class="hint">არ არის.</p>`);
+  } catch (err) { fail(el, err); }
+}
+async function advance(id) { try { await api(`/api/jobs/${id}/advance`, {json: {}}); loadJobs(); } catch (err) { alert(err.message); } }
+async function withdraw(id) { try { await api(`/api/offers/${id}/withdraw`, {json: {}}); loadJobs(); } catch (err) { alert(err.message); } }
+async function loadVehicles() {
+  const el = $("#vehicles");
+  try {
+    const vs = await api("/api/vehicles/mine");
+    const cities = META.cities.map(c => `<option value="${c.name}">${esc(c.label)}</option>`).join("");
+    el.innerHTML = vs.length ? vs.map(v => `<div class="item"><b>${esc(v.truck_label)}</b> · ${v.capacity_kg.toLocaleString("ka-GE")} კგ
+      ${v.plate ? "· " + esc(v.plate) : ""} · <span class="status ${v.available ? "s-open" : "s-cancelled"}">${v.available ? "თავისუფალი" : "დაკავებული"}</span>
+      <div class="actions"><select onchange="updateVehicle(${v.id}, {city: this.value})">${cities.replace(`value="${v.city}"`, `value="${v.city}" selected`)}</select>
+      <button class="secondary" onclick="updateVehicle(${v.id}, {available: ${!v.available}})">${v.available ? "დაკავებულად მონიშვნა" : "თავისუფლად მონიშვნა"}</button></div></div>`).join("")
+      : `<p class="hint">დაამატეთ მანქანა: ტვირთებს მისი ტიპით, ტვირთამწეობით და ადგილით შევარჩევთ.</p>`;
+  } catch (err) { fail(el, err); }
+}
+async function updateVehicle(id, change) { try { await api(`/api/vehicles/${id}`, {json: change}); loadVehicles(); } catch (err) { alert(err.message); } }
+async function addVehicle(e) {
+  e.preventDefault();
+  try { await api("/api/vehicles", {json: checkboxes(e.target, formData(e.target))}); e.target.reset(); loadVehicles(); }
+  catch (err) { alert(err.message); }
+  return false;
+}
+
+// documents
+async function loadDemoDocs() {
+  try {
+    const demos = await api("/api/paperwork/demo");
+    $("#demo-docs").innerHTML = "სადემონსტრაციო დოკუმენტები (სიმულაცია): " +
+      demos.map(d => `<button class="link" onclick="checkDemo('${d.id}', ${esc(JSON.stringify(d.files))})">${d.id}</button>`).join(" ");
+  } catch (err) { $("#demo-docs").textContent = ""; }
+}
+async function checkDemo(id, files) {
+  const data = new FormData();
+  for (const name of files) {
+    const blob = await (await fetch(`/api/paperwork/demo/${id}/${name}`)).blob();
+    data.append("files", blob, name);
+  }
+  runCheck(data);
+}
+async function checkDocs(e) {
+  e.preventDefault();
+  const data = new FormData();
+  for (const f of e.target.files.files) data.append("files", f);
+  runCheck(data);
+  return false;
+}
+async function runCheck(data) {
+  const el = $("#doc-result");
+  el.innerHTML = `<p class="hint">ვკითხულობ დოკუმენტებს… (ერთ წუთამდე)</p>`;
+  try {
+    const r = await api("/api/paperwork/check", {method: "POST", body: data});
+    const group = (title, items) => items.length ? `<h3>${title}</h3><ul>${items.map(f => `<li>${esc(f.detail)}${f.action ? `<br><b>→ ${esc(f.action)}</b>` : ""}</li>`).join("")}</ul>` : "";
+    const problems = r.findings.filter(f => f.severity === "problem"), notes = r.findings.filter(f => f.severity !== "problem");
+    el.innerHTML = `<p>${r.documents.map(d => `<span class="badge grey">${esc(d.name)}: ${esc(d.kind_label)}</span>`).join(" ")}</p>` +
+      (problems.length ? group("⚠️ პრობლემები", problems) : `<p>✅ პრობლემა არ მოიძებნა.</p>`) + group("შენიშვნები", notes) +
+      group("ემთხვევა", r.agreements) +
+      (r.draft_plan && r.draft_plan.available && ME.role === "shipper"
+        ? `<div class="actions"><button onclick="draftFromDoc('${r.check_id}')">ტვირთის მონახაზი ამ დოკუმენტიდან</button></div>` : "");
+  } catch (err) { fail(el, err); }
+}
+async function draftFromDoc(checkId) {
+  try { const d = await api("/api/paperwork/draft", {json: {check_id: checkId, values: {}}}); draftCard(d); }
+  catch (err) { alert(err.message); }
+}
+
+// ---------------------------------------------------------------- chat
+function md(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^[-•] /gm, "• ").replace(/\n/g, "<br>");
+}
+function say(who, html, raw = false) {
+  const div = document.createElement("div");
+  div.className = `msg ${who}`;
+  div.innerHTML = raw ? html : md(html);
+  $("#chat-log").appendChild(div);
+  $("#chat-log").scrollTop = 1e9;
+  return div;
+}
+async function sendChat(e) {
+  e.preventDefault();
+  const input = $("#chat-input"), text = input.value.trim();
+  if (!text) return false;
+  input.value = "";
+  say("me", text);
+  const wait = say("bot", "…");
+  try {
+    const r = await api("/api/chat", {json: {message: text}});
+    wait.innerHTML = md(r.reply) + (r.unverified_numbers && r.unverified_numbers.length
+      ? `<div class="warn">⚠️ ეს რიცხვები ვერ შემოწმდა: ${r.unverified_numbers.join(", ")}</div>` : "");
+    (r.drafts || []).forEach(draftCard);
+  } catch (err) { wait.innerHTML = `<span class="error">${esc(err.message)}</span>`; }
+  return false;
+}
+async function resetChat() { await api("/api/chat/reset", {json: {}}); start(); }
+function draftCard(d) {
+  const x = d.draft;
+  const body = d.kind === "load"
+    ? `<b>ტვირთის მონახაზი</b><br>${esc(x.origin_label)} → ${esc(x.destination_label)} · ${esc(x.truck_label)} · ${x.weight_kg.toLocaleString("ka-GE")} კგ<br>
+       აღება ${esc(x.pickup_date)} · ფასი <b>${gel(x.price_gel)}</b>${x.cargo ? " · " + esc(x.cargo) : ""}
+       ${d.price_check ? `<br><span class="hint">სამართლიანი ფასი ${gel(d.price_check.fair_price_range_gel[0])} – ${gel(d.price_check.fair_price_range_gel[1])}: ${esc(d.price_check.verdict_label)}</span>` : ""}`
+    : `<b>შეთავაზების მონახაზი</b><br>ტვირთი №${x.load_id}: ${esc(x.route)} · ${esc(x.pickup_date)}<br>
+       თქვენი ფასი <b>${gel(x.price_gel)}</b> (გამგზავნის: ${gel(x.shipper_price_gel)})
+       ${d.earnings ? `<br><span class="hint">ხარჯი ≈ ${gel(d.earnings.trip_costs_gel)}, დაგრჩებათ ≈ ${gel(d.earnings.driver_keeps_gel)}</span>` : ""}`;
+  const card = say("draft", body + `<div class="actions"><button>დადასტურება</button><button class="secondary">გაუქმება</button></div>`, true);
+  const [ok, no] = card.querySelectorAll("button");
+  ok.onclick = async () => {
+    try {
+      await api(`/api/drafts/${d.draft_id}/confirm`, {json: {}});
+      card.querySelector(".actions").innerHTML = "✅ " + (d.kind === "load" ? "გამოქვეყნდა" : "გაიგზავნა");
+      showView(ME.role === "shipper" ? "my-loads" : "jobs");
+    } catch (err) { alert(err.message); }
+  };
+  no.onclick = async () => {
+    await api(`/api/drafts/${d.draft_id}/reject`, {json: {}});
+    card.querySelector(".actions").innerHTML = "გაუქმდა";
+  };
+}
+
+// ---------------------------------------------------------------- go
+(async () => {
+  META = await api("/api/meta");
+  fillSelects();
+  try { ME = await api("/api/me"); } catch { ME = null; }
+  start();
+})();
+</script>
+</body>
+</html>

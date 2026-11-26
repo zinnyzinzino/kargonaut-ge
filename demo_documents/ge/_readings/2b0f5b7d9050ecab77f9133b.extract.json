@@ -1,0 +1,68 @@
+{
+  "answer": {
+    "issuer": "Kargonaut Logistics LLC",
+    "issued_date": "2026-11-20",
+    "load_number": null,
+    "references": [
+      {
+        "label": "№",
+        "value": "POD-2011-019"
+      },
+      {
+        "label": "ფასის დადასტურება № / RC №",
+        "value": "KF/2026/0388"
+      }
+    ],
+    "carrier": "Kargonaut Logistics LLC",
+    "pickup": {
+      "name": null,
+      "address": null,
+      "date": null,
+      "time": null
+    },
+    "delivery": {
+      "name": "Rustavi Auto Parts LLC",
+      "address": "რუსთავი, მეგობრობის გამზირი №21",
+      "date": "2026-11-20",
+      "time": "14:40"
+    },
+    "commodity": "სათადარიგო ნაწილები / Spare parts",
+    "equipment": null,
+    "pieces": 6,
+    "packages": [
+      {
+        "type": "ყუთი",
+        "count": 6
+      }
+    ],
+    "weight_as_printed": "900 კგ",
+    "weight": 900,
+    "weight_unit": "kg",
+    "rate": null,
+    "currency": null,
+    "signatures": [
+      {
+        "role": "driver",
+        "mark": "signature",
+        "signed": true,
+        "name": "გიორგი ტაბატაძე",
+        "initials": null,
+        "date": "2026-11-20"
+      },
+      {
+        "role": "receiver",
+        "mark": "signature",
+        "signed": true,
+        "name": null,
+        "initials": null,
+        "date": "2026-11-20"
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 148.2,
+    "prompt_version": "2026-11-24b"
+  }
+}

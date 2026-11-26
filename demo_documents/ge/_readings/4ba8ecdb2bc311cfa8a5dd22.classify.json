@@ -1,0 +1,12 @@
+{
+  "answer": {
+    "kind": "rate_confirmation",
+    "says_not_a_bol": false,
+    "title_as_printed": "ფასის დადასტურება\nRate Confirmation"
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 59.9,
+    "prompt_version": "2026-11-24b"
+  }
+}

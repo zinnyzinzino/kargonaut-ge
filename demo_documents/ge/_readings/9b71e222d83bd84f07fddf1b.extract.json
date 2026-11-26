@@ -1,0 +1,76 @@
+{
+  "answer": {
+    "issuer": "Saburtalo Furniture LLC",
+    "issued_date": "2026-12-03",
+    "load_number": null,
+    "references": [
+      {
+        "label": "№",
+        "value": "BOL-0312-077"
+      },
+      {
+        "label": "შეკვეთის ნომერი / Order (PO)",
+        "value": "SF-3307"
+      }
+    ],
+    "carrier": "Kargonaut Logistics LLC",
+    "pickup": {
+      "name": "Saburtalo Furniture LLC",
+      "address": "ქ. თბილისი, დავით გურამიშვილის გამზირი №76",
+      "date": null,
+      "time": null
+    },
+    "delivery": {
+      "name": "Adjara Hotel Group LLC",
+      "address": "ბათუმი, ტბელ აბუსერიძის ქ. 9",
+      "date": null,
+      "time": null
+    },
+    "commodity": "ავეჯი / Furniture",
+    "equipment": null,
+    "pieces": 30,
+    "packages": [
+      {
+        "type": "ყუთი",
+        "count": 30
+      }
+    ],
+    "weight_as_printed": "3 800 კგ",
+    "weight": 3800.0,
+    "weight_unit": "kg",
+    "rate": null,
+    "currency": null,
+    "signatures": [
+      {
+        "role": "shipper",
+        "mark": "signature",
+        "signed": true,
+        "name": "თამარ ლომიძე",
+        "initials": null,
+        "date": "2026-12-03"
+      },
+      {
+        "role": "driver",
+        "mark": "signature",
+        "signed": true,
+        "name": "ზურაბ კვარაცხელია",
+        "initials": null,
+        "date": "2026-12-03"
+      },
+      {
+        "role": "receiver",
+        "mark": "empty",
+        "signed": false,
+        "name": null,
+        "initials": null,
+        "date": null
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 18.5,
+    "prompt_version": "2026-11-24b"
+  }
+}

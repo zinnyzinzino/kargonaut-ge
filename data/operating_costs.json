@@ -1,0 +1,27 @@
+{
+  "currency": "GEL",
+  "data_type": "mixed_sourced_and_simulated_demo_assumptions",
+  "fuel": {
+    "diesel_price_per_liter": 4.95,
+    "price_type": "retail_reference_approximate",
+    "as_of_date": "2026-11-19",
+    "source_url": "https://dailyfuels.com/georgia/",
+    "source_note": "Approximate published national diesel retail reference; verify the station price before commercial use"
+  },
+  "driver": {
+    "cost_per_day": 100,
+    "assumed_driving_hours_per_day": 8,
+    "data_type": "simulated"
+  },
+  "vehicle": {
+    "maintenance_cost_source": "trucks.json",
+    "maintenance_cost_field": "cost_per_km",
+    "data_type": "simulated"
+  },
+  "trip": {
+    "fixed_trip_cost": 30,
+    "default_toll_cost": 0,
+    "other_carrier_expenses": 25,
+    "data_type": "simulated"
+  }
+}

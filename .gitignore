@@ -1,0 +1,13 @@
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+
+# The database (accounts, loads, offers): never committed
+data/*.db
+data/*.db-journal
+
+# Private documents and what Gemini read from them
+documents/*
+!documents/README.md
+evals/results/

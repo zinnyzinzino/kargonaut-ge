@@ -1,0 +1,56 @@
+{
+  "answer": {
+    "issuer": "Alazani Freight LLC",
+    "issued_date": "2026-11-27",
+    "load_number": "AF-26-1203",
+    "references": [
+      {
+        "label": "PO",
+        "value": "SF-3307"
+      }
+    ],
+    "carrier": "Kargonaut Logistics LLC",
+    "pickup": {
+      "name": "Saburtalo Furniture LLC",
+      "address": "თბილისი, გურამიშვილის გამზ. 76",
+      "date": "2026-12-03",
+      "time": "11:00"
+    },
+    "delivery": {
+      "name": "Adjara Hotel Group LLC",
+      "address": "ბათუმი, ჭავჭავაძის ქ. 54",
+      "date": "2026-12-04",
+      "time": "10:00"
+    },
+    "commodity": "ავეჯი / Furniture",
+    "equipment": "Box truck",
+    "pieces": 30,
+    "packages": [
+      {
+        "type": "ყუთი",
+        "count": 30
+      }
+    ],
+    "weight_as_printed": "3 800 კგ",
+    "weight": 3800,
+    "weight_unit": "kg",
+    "rate": 840,
+    "currency": "GEL",
+    "signatures": [
+      {
+        "role": "carrier",
+        "mark": "signature",
+        "signed": true,
+        "name": "ნინო კაპანაძე",
+        "initials": null,
+        "date": "2026-11-27"
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "seconds": 16.1,
+    "prompt_version": "2026-11-24b"
+  }
+}

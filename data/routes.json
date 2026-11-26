@@ -1,0 +1,392 @@
+{
+    "source": "OSRM / OpenStreetMap",
+    "generated_at": "2026-11-19T16:56:11.464436+00:00",
+    "location_precision": "representative_city_coordinates",
+    "vehicle_profile": "driving",
+    "routes": [
+        {
+            "origin": "Tbilisi",
+            "destination": "Tbilisi",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Kutaisi",
+            "distance_km": 221.3,
+            "duration_minutes": 179.9
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Batumi",
+            "distance_km": 363.7,
+            "duration_minutes": 299.9
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Poti",
+            "distance_km": 318.9,
+            "duration_minutes": 254.6
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Zestafoni",
+            "distance_km": 185.1,
+            "duration_minutes": 152.5
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Samtredia",
+            "distance_km": 249.6,
+            "duration_minutes": 196.0
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Gori",
+            "distance_km": 86.1,
+            "duration_minutes": 72.4
+        },
+        {
+            "origin": "Tbilisi",
+            "destination": "Rustavi",
+            "distance_km": 29.2,
+            "duration_minutes": 33.6
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Tbilisi",
+            "distance_km": 221.6,
+            "duration_minutes": 181.6
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Kutaisi",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Batumi",
+            "distance_km": 155.0,
+            "duration_minutes": 139.5
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Poti",
+            "distance_km": 110.2,
+            "duration_minutes": 94.3
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Zestafoni",
+            "distance_km": 38.5,
+            "duration_minutes": 35.9
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Samtredia",
+            "distance_km": 41.0,
+            "duration_minutes": 35.6
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Gori",
+            "distance_km": 140.2,
+            "duration_minutes": 118.7
+        },
+        {
+            "origin": "Kutaisi",
+            "destination": "Rustavi",
+            "distance_km": 245.0,
+            "duration_minutes": 202.9
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Tbilisi",
+            "distance_km": 363.6,
+            "duration_minutes": 300.7
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Kutaisi",
+            "distance_km": 155.1,
+            "duration_minutes": 141.4
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Batumi",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Poti",
+            "distance_km": 74.4,
+            "duration_minutes": 76.3
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Zestafoni",
+            "distance_km": 180.5,
+            "duration_minutes": 155.0
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Samtredia",
+            "distance_km": 115.9,
+            "duration_minutes": 105.9
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Gori",
+            "distance_km": 282.2,
+            "duration_minutes": 237.8
+        },
+        {
+            "origin": "Batumi",
+            "destination": "Rustavi",
+            "distance_km": 386.9,
+            "duration_minutes": 321.9
+        },
+        {
+            "origin": "Poti",
+            "destination": "Tbilisi",
+            "distance_km": 318.4,
+            "duration_minutes": 256.0
+        },
+        {
+            "origin": "Poti",
+            "destination": "Kutaisi",
+            "distance_km": 110.0,
+            "duration_minutes": 96.7
+        },
+        {
+            "origin": "Poti",
+            "destination": "Batumi",
+            "distance_km": 74.0,
+            "duration_minutes": 76.5
+        },
+        {
+            "origin": "Poti",
+            "destination": "Poti",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Poti",
+            "destination": "Zestafoni",
+            "distance_km": 135.4,
+            "duration_minutes": 110.3
+        },
+        {
+            "origin": "Poti",
+            "destination": "Samtredia",
+            "distance_km": 66.1,
+            "duration_minutes": 61.1
+        },
+        {
+            "origin": "Poti",
+            "destination": "Gori",
+            "distance_km": 237.0,
+            "duration_minutes": 193.1
+        },
+        {
+            "origin": "Poti",
+            "destination": "Rustavi",
+            "distance_km": 341.8,
+            "duration_minutes": 277.2
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Tbilisi",
+            "distance_km": 184.7,
+            "duration_minutes": 153.5
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Kutaisi",
+            "distance_km": 37.5,
+            "duration_minutes": 35.4
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Batumi",
+            "distance_km": 179.9,
+            "duration_minutes": 155.4
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Poti",
+            "distance_km": 135.1,
+            "duration_minutes": 110.2
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Zestafoni",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Samtredia",
+            "distance_km": 65.9,
+            "duration_minutes": 51.6
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Gori",
+            "distance_km": 103.3,
+            "duration_minutes": 90.6
+        },
+        {
+            "origin": "Zestafoni",
+            "destination": "Rustavi",
+            "distance_km": 208.1,
+            "duration_minutes": 174.7
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Tbilisi",
+            "distance_km": 249.7,
+            "duration_minutes": 197.2
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Kutaisi",
+            "distance_km": 41.2,
+            "duration_minutes": 37.9
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Batumi",
+            "distance_km": 116.0,
+            "duration_minutes": 106.1
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Poti",
+            "distance_km": 71.2,
+            "duration_minutes": 60.9
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Zestafoni",
+            "distance_km": 66.7,
+            "duration_minutes": 51.5
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Samtredia",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Gori",
+            "distance_km": 168.3,
+            "duration_minutes": 134.3
+        },
+        {
+            "origin": "Samtredia",
+            "destination": "Rustavi",
+            "distance_km": 273.1,
+            "duration_minutes": 218.5
+        },
+        {
+            "origin": "Gori",
+            "destination": "Tbilisi",
+            "distance_km": 85.8,
+            "duration_minutes": 73.1
+        },
+        {
+            "origin": "Gori",
+            "destination": "Kutaisi",
+            "distance_km": 142.2,
+            "duration_minutes": 118.3
+        },
+        {
+            "origin": "Gori",
+            "destination": "Batumi",
+            "distance_km": 284.6,
+            "duration_minutes": 238.3
+        },
+        {
+            "origin": "Gori",
+            "destination": "Poti",
+            "distance_km": 239.8,
+            "duration_minutes": 193.0
+        },
+        {
+            "origin": "Gori",
+            "destination": "Zestafoni",
+            "distance_km": 106.0,
+            "duration_minutes": 90.9
+        },
+        {
+            "origin": "Gori",
+            "destination": "Samtredia",
+            "distance_km": 170.6,
+            "duration_minutes": 134.4
+        },
+        {
+            "origin": "Gori",
+            "destination": "Gori",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        },
+        {
+            "origin": "Gori",
+            "destination": "Rustavi",
+            "distance_km": 109.2,
+            "duration_minutes": 94.3
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Tbilisi",
+            "distance_km": 29.3,
+            "duration_minutes": 34.0
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Kutaisi",
+            "distance_km": 244.7,
+            "duration_minutes": 201.3
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Batumi",
+            "distance_km": 387.0,
+            "duration_minutes": 321.3
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Poti",
+            "distance_km": 342.3,
+            "duration_minutes": 276.1
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Zestafoni",
+            "distance_km": 208.5,
+            "duration_minutes": 173.9
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Samtredia",
+            "distance_km": 273.0,
+            "duration_minutes": 217.4
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Gori",
+            "distance_km": 109.5,
+            "duration_minutes": 93.8
+        },
+        {
+            "origin": "Rustavi",
+            "destination": "Rustavi",
+            "distance_km": 0.0,
+            "duration_minutes": 0.0
+        }
+    ]
+}
