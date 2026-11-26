@@ -157,9 +157,10 @@ def load_with_a_deadline(shippers, drivers):
 
 
 def trip_on_the_road(shippers, drivers):
-    """One trip already on the road for the demo driver (ლევანი), matching the simulated proof of delivery
-    demo_documents/ge/ge-06/pod.pdf (Gori -> Rustavi, 6 boxes of spare parts, 900 kg): pressing „მივიტანე“ with that
-    paper shows the delivery check without any Gemini call (its reading ships with the app)."""
+    """One trip booked for the demo driver (ლევანი), ready for the whole document chain on one load (Gori -> Rustavi,
+    6 boxes of spare parts, 900 kg): its transport order, then at „ავიღე ტვირთი“ the simulated waybill
+    demo_documents/ge/ge-07/waybill.pdf (this truck's plate), then at „მივიტანე“ the simulated proof of delivery
+    ge-06/pod.pdf. Both readings ship with the app: no Gemini call on stage. (Until 27 Nov it started on the road.)"""
     shipper, driver = shippers[3], drivers[0]
     vehicle = mp.vehicles_of(driver["id"])[0]
     with db.connect() as conn:
@@ -169,7 +170,7 @@ def trip_on_the_road(shippers, drivers):
             " agreed_price_gel, booked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (shipper["id"], "Gori", "Rustavi", vehicle["truck_type"], 900, "სათადარიგო ნაწილები", 6,
              date.today().isoformat(), "ცხინვალის გზატკეცილი №5", "მეგობრობის გამზ. 21", 310,
-             "სადემონსტრაციო რეისი (სიმულაცია)", "in_transit", driver["id"], vehicle["id"], 310,
+             "სადემონსტრაციო რეისი (სიმულაცია)", "booked", driver["id"], vehicle["id"], 310,
              (date.today() - timedelta(days=1)).isoformat())).lastrowid
 
 

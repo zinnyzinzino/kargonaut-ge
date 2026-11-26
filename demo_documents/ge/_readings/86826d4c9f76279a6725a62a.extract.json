@@ -1,0 +1,96 @@
+{
+  "answer": {
+    "issuer": "Gori Auto Service LLC",
+    "issued_date": "2026-11-28",
+    "load_number": null,
+    "references": [
+      {
+        "label": "№",
+        "value": "0412378915"
+      },
+      {
+        "label": "ტიპი",
+        "value": "ტრანსპორტირებით"
+      },
+      {
+        "label": "სტატუსი",
+        "value": "აქტიური"
+      },
+      {
+        "label": "ს/ნ",
+        "value": "400000001"
+      },
+      {
+        "label": "ს/ნ",
+        "value": "400000002"
+      },
+      {
+        "label": "სახელმწიფო ნომერი",
+        "value": "DM001KG"
+      },
+      {
+        "label": "პ/ნ",
+        "value": "01000000005"
+      }
+    ],
+    "carrier": null,
+    "pickup": {
+      "name": "Gori Auto Service LLC",
+      "address": "გორი, ცხინვალის გზატკეცილი №5",
+      "date": "2026-11-28",
+      "time": "09:30"
+    },
+    "delivery": {
+      "name": "Rustavi Auto Parts LLC",
+      "address": "რუსთავი, მეგობრობის გამზ. 21",
+      "date": null,
+      "time": null
+    },
+    "commodity": "ავტონაწილები: სამუხრუჭე ხუნდები, ფილტრები",
+    "equipment": "ავტომობილი",
+    "pieces": 6,
+    "packages": [
+      {
+        "type": "ყუთი",
+        "count": 6
+      }
+    ],
+    "weight_as_printed": "ბრუტო წონა 900 კგ",
+    "weight": 900.0,
+    "weight_unit": "kg",
+    "rate": 310.0,
+    "currency": "₾",
+    "signatures": [
+      {
+        "role": "shipper",
+        "mark": "signature",
+        "signed": true,
+        "name": "თამარ ბერიძე",
+        "initials": null,
+        "date": "2026-11-28"
+      },
+      {
+        "role": "driver",
+        "mark": "signature",
+        "signed": true,
+        "name": "ლევან გელაშვილი",
+        "initials": null,
+        "date": "2026-11-28"
+      },
+      {
+        "role": "receiver",
+        "mark": "empty",
+        "signed": false,
+        "name": null,
+        "initials": null,
+        "date": null
+      }
+    ],
+    "handwritten_notes": []
+  },
+  "meta": {
+    "model": "gemini-3-flash-preview",
+    "seconds": 12.8,
+    "prompt_version": "2026-11-24b"
+  }
+}

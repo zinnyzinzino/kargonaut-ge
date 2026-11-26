@@ -61,6 +61,61 @@ function podBlock(l, compact = false) {
     ${compact ? "" : p.problems.map(finding).join("") + p.notes.map(finding).join("")}</div>`;
 }
 
+// ---- the waybill at pickup (სასაქონლო ზედნადები): the AI reads it, Python compares it with the booked load
+function waybillBlock(l, compact = false) {
+  const w = l.waybill;
+  if (!w) return "";
+  if (w.none_issued) return `<div class="pod-box"><div class="pod-head"><span class="label-sm">ზედნადები</span>
+    <span class="muted small">არ გაცემულა (მძღოლმა მონიშნა აღებისას)</span></div></div>`;
+  const finding = (f) => `<div class="finding ${f.severity === "problem" ? "" : "note"}">${esc(f.detail)}
+    ${f.action ? `<div class="todo">→ ${esc(f.action)}</div>` : ""}</div>`;
+  const facts = [w.number ? `№ ${esc(w.number)}` : "", w.plate ? `მანქანა ${esc(w.plate)}` : "",
+                 w.weight != null ? `${esc(w.weight)} ${esc(w.weight_unit || "")}` : ""].filter(Boolean).join(" · ");
+  return `<div class="pod-box"><div class="pod-head"><span class="label-sm">ზედნადები (აღებისას)</span>
+      <a href="/api/loads/${l.id}/waybill/file" target="_blank" rel="noopener">${esc(w.file_name)}</a>
+      ${w.problems.length ? `<span class="chip bad">${w.problems.length} პრობლემა</span>` : `<span class="chip go">✓ ემთხვევა ტვირთს</span>`}</div>
+    <div class="small">${facts || (w.read ? "" : "დოკუმენტი ვერ წავიკითხეთ")}</div>
+    ${compact ? "" : w.problems.map(finding).join("") + w.notes.map(finding).join("")}</div>`;
+}
+
+function pickupForm(loadId) {
+  return `<form class="pickup-form" data-pickup="${loadId}">
+    <span class="label-sm">აღებისას ატვირთეთ სასაქონლო ზედნადები</span>
+    <label class="btn sm secondary">ფოტო / PDF<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="sr-only"></label>
+    <span class="pod-name muted small">ფაილი არ არის არჩეული</span>
+    <button type="button" class="link small" data-waybill-demo>სადემონსტრაციო ზედნადები</button>
+    <label class="check small"><input type="checkbox" name="none_issued"> ზედნადები არ გაცემულა (კერძო პირის ტვირთი)</label>
+    <button class="btn sm go">✓ ავიღე ტვირთი</button></form>`;
+}
+
+function wirePickupForms(root, after) {
+  $$(".pickup-form", root).forEach((f) => {
+    const show = (name) => { $(".pod-name", f).textContent = name; };
+    f.file.onchange = () => { f._file = f.file.files[0]; if (f._file) { show(f._file.name); f.none_issued.checked = false; } };
+    $("[data-waybill-demo]", f).onclick = async () => {   // the simulated demo waybill (its reading ships with the app)
+      const blob = await (await fetch("/api/paperwork/demo/ge-07/waybill.pdf")).blob();
+      f._file = new File([blob], "waybill.pdf", { type: "application/pdf" });
+      f.none_issued.checked = false;
+      show("waybill.pdf (სიმულაცია)");
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const none = f.none_issued.checked;
+      if (!none && !f._file) { toast("ატვირთეთ ზედნადების ფოტო ან მონიშნეთ, რომ ზედნადები არ გაცემულა.", true); return; }
+      const data = new FormData();
+      if (none) data.append("none_issued", "true"); else data.append("file", f._file, f._file.name);
+      const button = $("button.go", f);
+      button.disabled = true; button.textContent = none ? "…" : "ვკითხულობ ზედნადებს…";
+      try {
+        const r = await api(`/api/jobs/${f.dataset.pickup}/pickup`, { method: "POST", body: data });
+        toast(none ? "ტვირთი აღებულია: გზაში ხართ." : r.waybill && r.waybill.problems.length
+          ? "აღებულია. ზედნადებზე არის შეუსაბამობა: ნახეთ დეტალები." : "აღებულია. ზედნადები ემთხვევა ტვირთს.");
+        after();
+      } catch (err) { toast(err.message, true); button.disabled = false; button.textContent = "✓ ავიღე ტვირთი"; }
+    };
+  });
+}
+
 function podForm(loadId) {
   return `<form class="pod-form" data-pod="${loadId}">
     <span class="label-sm">მიტანისთვის ატვირთეთ ხელმოწერილი ზედნადები ან მიღება-ჩაბარების აქტი</span>
@@ -457,7 +512,8 @@ function shipperRow(l) {
       <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div>
       <div class="muted small">შექმნილია ${esc((l.created_at || "").slice(0, 10))}</div></div>
     <div><span class="status" style="--c:${c}">${esc(l.status_label)}</span>
-      ${l.pod ? `<div><span class="chip ${l.pod.problems.length ? "bad" : "go"}">დოკუმენტი ${l.pod.problems.length ? "⚠" : "✓"}</span></div>` : ""}
+      ${l.waybill && !l.waybill.none_issued ? `<div><span class="chip ${l.waybill.problems.length ? "bad" : "go"}">ზედნადები ${l.waybill.problems.length ? "⚠" : "✓"}</span></div>` : ""}
+      ${l.pod ? `<div><span class="chip ${l.pod.problems.length ? "bad" : "go"}">მიტანა ${l.pod.problems.length ? "⚠" : "✓"}</span></div>` : ""}
       ${l.needs_liftgate ? `<div><span class="chip">ჰიდრ. ბორტი</span></div>` : ""}${l.hazmat ? `<div><span class="chip bad">სახიფათო</span></div>` : ""}</div>
     <div><div class="label-sm">აღება</div>
       <div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
@@ -492,7 +548,7 @@ async function loadDetail(l) {
         `<span class="pill" style="--c:${i <= at ? "#34C17B" : "#3A4A5E"}"><span class="dot"></span>${s[1]}</span>`).join("")}</div>
        <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>
        <div class="detail-actions">${orderLink(l)}</div>` +
-      podBlock(l) + (l.can_rate ? ratingForm(l.id, "მძღოლი") : l.my_rating ? `<p>${given(l.my_rating)}</p>` : "");
+      waybillBlock(l) + podBlock(l) + (l.can_rate ? ratingForm(l.id, "მძღოლი") : l.my_rating ? `<p>${given(l.my_rating)}</p>` : "");
     wireRatings(box, refresh);
     return;
   }
@@ -847,6 +903,7 @@ async function renderTrips() {
     wirePills(view, draw);
     wireRatings(view, renderTrips);
     wirePodForms(view, renderTrips);
+    wirePickupForms(view, renderTrips);
     $$("[data-advance]", view).forEach((b) => b.onclick = async () => {
       try { await api(`/api/jobs/${b.dataset.advance}/advance`, { json: {} }); toast("სტატუსი განახლდა."); renderTrips(); }
       catch (err) { toast(err.message, true); }
@@ -861,12 +918,12 @@ async function renderTrips() {
 
 function tripRow(t) {
   const l = t.load, c = (TRIP_GROUPS.slice(1).find((g) => g[3](t)) || TRIP_GROUPS[0])[2];
-  const next = { booked: "✓ ავიღე ტვირთი" }[l.status];
+  // booked: pick up with the waybill; on the road: deliver with the signed paper; delivered: both papers + rating
   const action = t.kind === "offer"
     ? `<button class="btn sm danger" data-withdraw="${t.offer.id}">შეთავაზების გაუქმება</button>`
-    : next ? `<button class="btn sm go" data-advance="${l.id}">${next}</button>`
-    : l.status === "in_transit" ? podForm(l.id)
-    : podBlock(l, true) + (l.can_rate ? ratingForm(l.id, "გამგზავნი") : l.my_rating ? given(l.my_rating) : `<span class="chip go">დასრულებული</span>`);
+    : l.status === "booked" ? pickupForm(l.id)
+    : l.status === "in_transit" ? waybillBlock(l, true) + podForm(l.id)
+    : waybillBlock(l, true) + podBlock(l, true) + (l.can_rate ? ratingForm(l.id, "გამგზავნი") : l.my_rating ? given(l.my_rating) : `<span class="chip go">დასრულებული</span>`);
   return `<div class="board-row cols-trips" style="--c:${c}">
     <div><div class="cell-title">№${l.id}</div><span class="status" style="--c:${c}">${t.kind === "offer" ? "შეთავაზება" : esc(l.status_label)}</span>
       <div>${esc(l.cargo || "ტვირთი")}</div><div class="muted small">${fmt(l.weight_kg)} კგ · ${esc(l.truck_label)}</div></div>
@@ -981,7 +1038,7 @@ async function renderDocs() {
 const DEMO_LABELS = {
   "ge-01": "ფასის დადასტურება (RC) → ახალი ტვირთი", "ge-02": "ფასის დადასტურება და კონოსამენტი ემთხვევა",
   "ge-03": "სხვა გადამზიდი", "ge-04": "მიტანის მისამართი განსხვავდება", "ge-05": "წონა არ წერია",
-  "ge-06": "მიტანის დადასტურება (POD) სახელის გარეშე",
+  "ge-06": "მიტანის დადასტურება (POD) სახელის გარეშე", "ge-07": "ზედნადები აღებისას",
 };
 const DOC_ROLE = { carrier: "გადამზიდი", driver: "მძღოლი", shipper: "გამგზავნი", receiver: "მიმღები" };
 const DOC_PACKAGE = { cartons: "კოლოფი", pallets: "პალეტი", skids: "სკიდი", pieces: "ცალი", crates: "ყუთი",

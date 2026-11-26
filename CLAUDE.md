@@ -79,10 +79,16 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   the model's raw answer before Python's checks). Look there first when "the AI did something odd".
 - Ratings: after delivery each side rates the other once, 1-5 stars (`marketplace.rate`, table `ratings`). Averages show
   on offers, on the driver's load board and in the header. The offer ranking is still price first, then distance.
+- Waybill at pickup (27 Nov): „ავიღე ტვირთი“ (booked -> in_transit) takes a photo of the სასაქონლო ზედნადები or
+  „არ გაცემულა“ (`POST /api/jobs/{id}/pickup`, table `waybills`). The paperwork agent reads it; Python
+  (`marketplace.waybill_check`) compares the truck plate (RS.ge writes it without dashes), the cities and the weight
+  (±10%) with the booked load; problems don't block, both sides see them. Demo waybill: `demo_documents/ge/ge-07`
+  (`generate_demo_waybill.py`, fields from the RS.ge waybill service's data, SIMULATED), reading shipped, 17/17.
+  Demo load 19 now starts BOOKED: order -> waybill -> POD on one trip.
 - Proof of delivery: „მივიტანე“ (in_transit -> delivered) needs the signed paper (`POST /api/jobs/{id}/deliver`). The
   paperwork agent reads it, Python checks the signature and the delivery city (`marketplace.pod_check_city`);
   problems don't block delivery, both sides see them with an action. Photos live next to the database (`data/pod/`).
-  The demo trip on the road (load 19, Gori -> Rustavi) matches `demo_documents/ge/ge-06/pod.pdf`, whose reading ships.
+  The demo trip (load 19, Gori -> Rustavi) matches `demo_documents/ge/ge-06/pod.pdf`, whose reading ships.
 - Transport order (ტვირთის გადაზიდვის შეკვეთა, `transport_order.py`, `GET /api/loads/{id}/order.pdf`): Georgia has no
   standard rate-confirmation form, so once a shipper accepts an offer the site writes the order itself from the
   database (parties, truck and plate, route, cargo, agreed price), one A4 page, for the two sides only. What the site

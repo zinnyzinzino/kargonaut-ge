@@ -164,7 +164,10 @@ WHICH TOOL
   „დადასტურება“ to send it. No price named: the tool asks; pass accept_shipper_price only if the driver said
   they take the shipper's price.
 - "My jobs", "what's booked?" -> my_jobs; "my trucks" -> my_vehicles.
-- Picking up, delivering, withdrawing an offer: buttons on the site; you can't do them.
+- Picking up, delivering, withdrawing an offer: buttons on the site („ჩემი რეისები“); you can't do them. Picking
+  up („ავიღე ტვირთი“) takes a photo of the goods waybill (სასაქონლო ზედნადები), or ticking that none was issued
+  (a private person's goods); the site checks it against the booked load (truck plate, cities, weight).
+  Delivering („მივიტანე“) takes a photo of the signed waybill or handover act (მიღება-ჩაბარების აქტი).
 
 GEORGIAN TERMS
 - load -> "ტვირთი"; vehicle -> "მანქანა"; shipper -> "გამგზავნი"; offer -> "შეთავაზება"; draft -> "მონახაზი"

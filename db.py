@@ -88,6 +88,18 @@ CREATE TABLE IF NOT EXISTS ratings (
     UNIQUE (load_id, from_user)                -- each side rates the other once per load
 );
 
+CREATE TABLE IF NOT EXISTS waybills (           -- the goods waybill (სასაქონლო ზედნადები) the driver photographs at pickup
+    id          INTEGER PRIMARY KEY,
+    load_id     INTEGER NOT NULL UNIQUE REFERENCES loads(id),
+    driver_id   INTEGER NOT NULL REFERENCES users(id),
+    none_issued INTEGER NOT NULL DEFAULT 0,    -- 1: no waybill was issued (a private person's goods): no file
+    file_name   TEXT,
+    stored_path TEXT,                          -- data/pod/ (git-ignored), like the proof of delivery
+    document    TEXT,                          -- what the paperwork agent read (JSON)
+    findings    TEXT,                          -- Python's checks against the booked load (JSON)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS pods (               -- proof of delivery: the signed paper the driver photographs
     id          INTEGER PRIMARY KEY,
     load_id     INTEGER NOT NULL UNIQUE REFERENCES loads(id),

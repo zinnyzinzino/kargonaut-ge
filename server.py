@@ -350,18 +350,11 @@ def _pods_dir():
     return db.db_path().parent / "pod"
 
 
-@app.post("/api/jobs/{load_id}/deliver")
-def job_deliver(load_id: int, file: UploadFile = File(...), user=Depends(driver)):
-    """„მივიტანე“: the driver uploads the signed paper (a waybill, a handover act, a POD). The paperwork agent reads
-    it (who signed, is a name printed), Python checks it (signature, the delivery city), then the load is delivered.
-    Problems don't block the delivery: both sides see them, with what to do."""
+def _save_trip_document(load_id, file):
+    """A photo or PDF a driver uploads on a trip (waybill at pickup, proof of delivery): checked, then kept next to
+    the database. Returns (shown name, saved path)."""
     from paperwork.extract import MIME_TYPES
-    from paperwork.graph import read_documents
-    load = mp.get_load(load_id)
-    if not load or load.get("driver_id") != user["id"] or load["status"] != "in_transit":
-        # the same refusal as the marketplace rule, before any reading is paid for
-        _ok(mp.deliver_with_pod(user["id"], load_id, "", "", None, []))
-    name = Path(file.filename or "pod").name
+    name = Path(file.filename or "document").name
     suffix = Path(name).suffix.lower()
     if suffix not in MIME_TYPES:
         raise HTTPException(400, f"{name}: მხოლოდ PDF, JPG, PNG ან WEBP ფაილი.")
@@ -373,11 +366,56 @@ def job_deliver(load_id: int, file: UploadFile = File(...), user=Depends(driver)
     safe = re.sub(r"[^\w.-]", "_", Path(name).stem)[:40]
     path = folder / f"{load_id}_{uuid.uuid4().hex[:8]}_{safe}{suffix}"
     path.write_bytes(data)
+    return name, path
+
+
+def _read_trip_document(path, name, user):
+    """The paperwork agent reads one trip document: (document, findings). "No rate confirmation to compare with" is
+    for a dispatcher's pack of documents, not for one paper on a trip."""
+    from paperwork.graph import read_documents
     state = read_documents([path], [user["name"]] + OUR_CARRIER, reader=_paperwork_reader(), lang="ka",
                            display_names={str(path): name})
     document = (state.get("documents") or [None])[0]
-    # "no rate confirmation to compare with" is for a dispatcher's pack of documents, not for one delivery paper
-    findings = [f for f in state.get("findings", []) if f.get("check") != "no_rate_confirmation"]
+    return document, [f for f in state.get("findings", []) if f.get("check") != "no_rate_confirmation"]
+
+
+@app.post("/api/jobs/{load_id}/pickup")
+def job_pickup(load_id: int, file: UploadFile | None = File(None), none_issued: bool = Form(False),
+               user=Depends(driver)):
+    """„ავიღე ტვირთი“: the driver photographs the goods waybill (სასაქონლო ზედნადები), or says none was issued (a
+    private person's goods). The paperwork agent reads it; Python compares it with the booked load (truck plate,
+    cities, weight); then the load is on the road. Problems don't block the pickup: both sides see them."""
+    load = mp.get_load(load_id)
+    if not load or load.get("driver_id") != user["id"] or load["status"] != "booked":
+        _ok(mp.pickup_with_waybill(user["id"], load_id, none_issued=True))   # the rule's refusal, before any reading
+    if none_issued or file is None:
+        return _ok(mp.pickup_with_waybill(user["id"], load_id, none_issued=none_issued))
+    name, path = _save_trip_document(load_id, file)
+    document, findings = _read_trip_document(path, name, user)
+    return _ok(mp.pickup_with_waybill(user["id"], load_id, name, str(path), document, findings))
+
+
+@app.get("/api/loads/{load_id}/waybill/file")
+def waybill_file(load_id: int, user=Depends(current_user)):
+    """The waybill photo from the pickup: only for the load's shipper and driver."""
+    from paperwork.extract import MIME_TYPES
+    found = mp.waybill_file(user["id"], load_id)
+    if not found or not Path(found[0]).exists():
+        raise HTTPException(404, "დოკუმენტი ვერ მოიძებნა.")
+    return FileResponse(found[0], media_type=MIME_TYPES.get(Path(found[0]).suffix.lower()), filename=found[1])
+
+
+@app.post("/api/jobs/{load_id}/deliver")
+def job_deliver(load_id: int, file: UploadFile = File(...), user=Depends(driver)):
+    """„მივიტანე“: the driver uploads the signed paper (a waybill, a handover act, a POD). The paperwork agent reads
+    it (who signed, is a name printed), Python checks it (signature, the delivery city), then the load is delivered.
+    Problems don't block the delivery: both sides see them, with what to do."""
+    load = mp.get_load(load_id)
+    if not load or load.get("driver_id") != user["id"] or load["status"] != "in_transit":
+        # the same refusal as the marketplace rule, before any reading is paid for
+        _ok(mp.deliver_with_pod(user["id"], load_id, "", "", None, []))
+    name, path = _save_trip_document(load_id, file)
+    document, findings = _read_trip_document(path, name, user)
     return _ok(mp.deliver_with_pod(user["id"], load_id, name, str(path), document, findings))
 
 

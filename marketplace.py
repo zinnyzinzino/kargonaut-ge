@@ -330,6 +330,8 @@ def load_view(load, viewer=None):
         view["my_rating"] = given            # what this user gave the other side (None: not yet)
         view["can_rate"] = given is None
         view["pod"] = pod_view(load["id"])
+    if viewer and load["status"] in ("in_transit", "delivered") and viewer["id"] in (load["shipper_id"], load.get("driver_id")):
+        view["waybill"] = waybill_view(load["id"])   # what was handed over at pickup
     return view
 
 
@@ -640,6 +642,97 @@ def pod_file(user_id, load_id):
     if not load or not p or user_id not in (load["shipper_id"], load.get("driver_id")):
         return None
     return p["stored_path"], p["file_name"]
+
+
+# ---------------------------------------------------------------- the waybill at pickup (სასაქონლო ზედნადები)
+
+PLATE_GE = re.compile(r"[A-Z]{2}-\d{3}-[A-Z]{2}")
+
+
+def waybill_check(load, vehicle, document):
+    """Python compares the waybill the AI read with the booked load: the truck's plate, the pickup and delivery
+    cities, the weight. Findings in the paperwork format (problems are shown, they don't block the pickup)."""
+    from paperwork.draft import _city
+    if not document:
+        return []
+    name, out = [document.get("name")], []
+
+    def problem(check, detail, action):
+        out.append({"check": check, "severity": "problem", "documents": name, "detail": detail, "action": action})
+
+    plates = {normalize_plate(v) for v in (document.get("references") or {}).values() if isinstance(v, str)}
+    plates = {p for p in plates if p and PLATE_GE.fullmatch(p)}
+    if vehicle and vehicle.get("plate") and plates and vehicle["plate"] not in plates:
+        problem("waybill_plate_mismatch",
+                f"ზედნადებზე მანქანის ნომერია {', '.join(sorted(plates))}, ტვირთი კი დაჯავშნილია მანქანაზე {vehicle['plate']}.",
+                "ზედნადები უნდა იყოს გამოწერილი იმ მანქანაზე, რომელიც ტვირთს ვეზის: სთხოვეთ გამგზავნს, შეასწოროს.")
+    elif vehicle and vehicle.get("plate") and not plates:
+        out.append({"check": "waybill_plate_not_found", "severity": "note", "documents": name, "action": None,
+                    "detail": "ზედნადებზე მანქანის სახელმწიფო ნომერი ვერ ვიპოვეთ: გადაამოწმეთ ხელით."})
+    for stop, want, word in (("pickup", load["origin_city"], "აღების"), ("delivery", load["destination_city"], "მიტანის")):
+        printed = _city(document.get(stop) or {})
+        if printed and printed != want:
+            problem(f"waybill_{stop}_city_mismatch",
+                    f"ზედნადებზე {word} ქალაქია {CITY_KA[printed]}, ტვირთში კი {CITY_KA[want]}.",
+                    "გადაამოწმეთ: ეს ზედნადები ამ ტვირთისაა?")
+    weight = document.get("weight")
+    if weight and document.get("weight_unit") in ("kg", "t", "lb"):
+        kg = weight * {"kg": 1, "t": 1000, "lb": 0.4536}[document["weight_unit"]]
+        if abs(kg - load["weight_kg"]) > 0.1 * load["weight_kg"]:
+            problem("waybill_weight_mismatch",
+                    f"ზედნადებზე წონაა {round(kg):,} კგ, ტვირთში კი {load['weight_kg']:,} კგ.".replace(",", " "),
+                    "წონა ფასს და მანქანის ტვირთამწეობას ცვლის: შეუთანხმდით გამგზავნს, სანამ გაემგზავრებით.")
+    return out
+
+
+def waybill_view(load_id):
+    """What both sides see about the pickup's waybill, or None (picked up before the waybill step existed)."""
+    w = db.one("SELECT * FROM waybills WHERE load_id = ?", (load_id,))
+    if not w:
+        return None
+    doc = json.loads(w["document"] or "null") or {}
+    findings = json.loads(w["findings"] or "[]")
+    refs = doc.get("references") or {}
+    number = next((v for k, v in refs.items() if "№" in k), None)   # the waybill's own number ("№ 0412378915")
+    plate = next((p for p in (normalize_plate(v) for v in refs.values() if isinstance(v, str)) if p and PLATE_GE.fullmatch(p)), None)
+    return {"none_issued": bool(w["none_issued"]), "file_name": w["file_name"], "uploaded_at": w["created_at"],
+            "read": bool(doc), "number": number, "plate": plate,
+            "pickup_address": (doc.get("pickup") or {}).get("address"), "weight": doc.get("weight"),
+            "weight_unit": doc.get("weight_unit"),
+            "problems": [f for f in findings if f.get("severity") == "problem"],
+            "notes": [f for f in findings if f.get("severity") != "problem"]}
+
+
+def pickup_with_waybill(driver_id, load_id, file_name=None, stored_path=None, document=None, findings=None,
+                        none_issued=False):
+    """The driver's „ავიღე ტვირთი“: with the waybill's photo, or saying none was issued (goods of a private person).
+    Saves what was read and Python's comparison, then the load is on the road. Problems don't block the pickup:
+    both sides see them, with what to do."""
+    load = get_load(load_id)
+    if not load or load.get("driver_id") != driver_id:
+        return refuse("not_your_job", "ეს ტვირთი თქვენზე არ არის დაჯავშნილი.")
+    if load["status"] != "booked":
+        return refuse("not_booked", "ტვირთის აღება შესაძლებელია მხოლოდ დაჯავშნილ ტვირთზე.")
+    if not none_issued and not stored_path:
+        return refuse("waybill_required", "ატვირთეთ ზედნადების ფოტო ან მონიშნეთ, რომ ზედნადები არ გაცემულა.")
+    vehicle = db.one("SELECT * FROM vehicles WHERE id = ?", (load["vehicle_id"],))
+    findings = [] if none_issued else list(findings or []) + waybill_check(load, vehicle, document)
+    with db.connect() as conn:
+        conn.execute("INSERT INTO waybills (load_id, driver_id, none_issued, file_name, stored_path, document, findings)"
+                     " VALUES (?,?,?,?,?,?,?)",
+                     (load_id, driver_id, int(bool(none_issued)), file_name, stored_path,
+                      json.dumps(document, ensure_ascii=False) if document else None, json.dumps(findings, ensure_ascii=False)))
+        conn.execute("UPDATE loads SET status = 'in_transit' WHERE id = ?", (load_id,))
+    return {**load_view(get_load(load_id), get_user(driver_id)), "waybill": waybill_view(load_id)}
+
+
+def waybill_file(user_id, load_id):
+    """(path, file name) of a load's waybill photo, for its shipper and driver only."""
+    load = get_load(load_id)
+    w = db.one("SELECT * FROM waybills WHERE load_id = ?", (load_id,))
+    if not load or not w or not w["stored_path"] or user_id not in (load["shipper_id"], load.get("driver_id")):
+        return None
+    return w["stored_path"], w["file_name"]
 
 
 NEXT_STATUS = {"booked": "in_transit"}   # in_transit -> delivered only with a proof of delivery (deliver_with_pod)
