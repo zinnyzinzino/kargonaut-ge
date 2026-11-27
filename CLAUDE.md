@@ -34,9 +34,11 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
 ## Where things are
 
 - `marketplace.py`: every rule (accounts, loads, offers, bookings, drafts). The site and the AI both call it.
-  Errors are `{"error": <Georgian sentence>, "error_code": ...}`. A driver registers WITH their truck (type,
-  capacity, city, plate required; the body's inside length/width/height in metres optional): account and truck are
-  saved together or not at all. One plate = one truck. The forms no longer ask fuel use and wear (27 Nov: only what a
+  Errors are `{"error": <Georgian sentence>, "error_code": ...}`. A carrier („გადამზიდავი“) registers WITH their
+  trucks, one or a list (`vehicles`; type, capacity, city, plate required; the body's inside length/width/height in
+  metres optional): account and all trucks are saved together or not at all, an error names the truck („მანქანა №2:“).
+  Or „მანქანებს მოგვიანებით დავამატებ“ (`trucks_later`, 27 Nov, user's decision: a company may not have every plate
+  at hand): no trucks, the page opens „მანქანები“. One plate = one truck. The forms no longer ask fuel use and wear (27 Nov: only what a
   shipper needs to know); the API still takes them, else the type's typical value.
 - Free trucks (27 Nov, user's decision): shippers see every free truck (marked free, not on a booked/running trip)
   on their map with the driver's name and phone (`marketplace.free_vehicles`, `GET /api/vehicles/free`); the driver
@@ -77,6 +79,31 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   phones (the user's decision; the map already shows them).
 - AI log (27 Nov): every chat turn and describe-a-load reading -> `data/ai_log.jsonl` (git-ignored; describe keeps
   the model's raw answer before Python's checks). Look there first when "the AI did something odd".
+- Cargo size (27 Nov): a load may give ONE piece's length/width/height in metres (`loads.piece_*_m`, all three or
+  none; form, describe box with a metres/cm/mm guard `understand.size_said`, transport order). `core/matching.size_check`
+  compares it with the body size the driver entered: the piece fits the floor (turned, never tipped), under the roof
+  (flatbed: no roof), and pieces x volume <= body volume (lenient: assumes stacking); „ადგილები ერთმანეთზე არ იდება“
+  (`loads.no_stacking`, form + describe box with a word guard) -> floor area instead, flatbeds too. Fails -> the truck
+  doesn't see the load and can't offer, like weight. No body size -> not blocked, the offers table says „ძარის ზომა
+  უცნობია“. Ranking unchanged (price first).
+- Registration by legal status (27 Nov, `marketplace.validate_business`): ფიზ. პირი gives nothing (a personal number
+  is never asked or stored); ინდ. მეწარმე: ID code (11 digits) + legal address; კომპანია: ID code (9) + legal address +
+  contact person; IBAN optional for both, mod-97 checked (`normalize_iban`). Demo accounts are exempt (no invented
+  registry data); `seed_demo.py` registers the user's OWN accounts as ფიზ. პირი. Shown only to the user and the other
+  side of a booking (like the phone); printed on the transport order. The profile page (`#/app/profile`, opened by
+  the name/avatar in the bar, not a tab: the bar is full; `PUT /api/me`) edits them.
+- Demo for every case (27 Nov): the login page's buttons (`server.demo_logins`) = one demo account per role x
+  legal status, plus „მანქანების გარეშე“: shipper ფიზ. პირი (გიორგი), ინდ. მეწარმე (ნინო), კომპანია (შპს „მწვანე
+  ველი“, own orders: load 19 waits for its RC); carrier ფიზ. პირი (ზურაბ), ინდ. მეწარმე (ლევანი), კომპანია with 3
+  trucks (შპს „კოლხეთი ტრანსი“, 599000015), კომპანია without trucks (შპს „ახალი გზა“, 599000016). The two companies
+  are at the END of `DRIVERS`, so older phones, plates and load numbers (eval, demo documents) didn't move. Demo
+  registry details are SIMULATED (`seed_demo.demo_business`: zero ID codes, „სადემონსტრაციო მისამართი“, "DM" IBANs).
+- Own transport order (27 Nov, user's decision): a shipper picks Kargonaut's PDF or „ჩემი დოკუმენტი“ (default in the
+  profile, `users.order_preference`; per booking in the offers panel, `loads.order_source`; switchable until delivery).
+  Own: the shipper uploads it (`POST /api/loads/{id}/own-order`, table `own_orders`, a new upload replaces), the
+  paperwork agent reads it, Python (`marketplace.own_order_check`) compares price in ₾, cities, weight, plate; problems
+  don't block, both sides see them; our PDF is then refused (one agreement per trip). Demo: `ge-06/rc.pdf` matches a
+  Gori -> Rustavi 900 kg 310 ₾ booking (the „სადემონსტრაციო შეკვეთა“ button). Tests: `tests/test_business_and_orders.py`.
 - Ratings: after delivery each side rates the other once, 1-5 stars (`marketplace.rate`, table `ratings`). Averages show
   on offers, on the driver's load board and in the header. The offer ranking is still price first, then distance.
 - Waybill at pickup (27 Nov): „ავიღე ტვირთი“ (booked -> in_transit) takes a photo of the სასაქონლო ზედნადები or

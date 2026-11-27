@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS users (
     legal_status    TEXT NOT NULL DEFAULT 'person' -- person | entrepreneur (ინდ. მეწარმე) | company
                     CHECK (legal_status IN ('person', 'entrepreneur', 'company')),
     is_demo         INTEGER NOT NULL DEFAULT 0,    -- simulated demo account (seed_demo.py)
+    -- Business details (entrepreneur / company; a private person gives none). Printed on the transport order.
+    id_code         TEXT,                          -- საიდენტიფიკაციო კოდი: 9 digits (company), 11 (entrepreneur)
+    legal_address   TEXT,                          -- იურიდიული მისამართი
+    bank_account    TEXT,                          -- IBAN (GE..), optional, for invoices
+    contact_person  TEXT,                          -- a company's person to call
+    order_preference TEXT NOT NULL DEFAULT 'kargonaut',   -- shippers: 'kargonaut' (our PDF) or 'own' (upload theirs)
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -59,6 +65,10 @@ CREATE TABLE IF NOT EXISTS loads (
     weight_kg           INTEGER NOT NULL,
     cargo               TEXT,
     pieces              INTEGER,
+    piece_length_m      REAL,                      -- one piece's size, metres (optional, all three or none);
+    piece_width_m       REAL,                      --   checked against the truck body (core/matching.size_check)
+    piece_height_m      REAL,
+    no_stacking         INTEGER NOT NULL DEFAULT 0,  -- 1: the pieces can't go on top of each other
     pickup_date         TEXT NOT NULL,             -- YYYY-MM-DD
     deliver_by          TEXT,                      -- YYYY-MM-DD, optional: deliver no later than this day
     pickup_address      TEXT,
@@ -74,6 +84,7 @@ CREATE TABLE IF NOT EXISTS loads (
     vehicle_id          INTEGER REFERENCES vehicles(id),
     agreed_price_gel    REAL,
     booked_at           TEXT,                      -- when the shipper accepted an offer (the transport order's date)
+    order_source        TEXT,                      -- set at booking: 'kargonaut' (our PDF) or 'own' (own_orders)
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -108,6 +119,17 @@ CREATE TABLE IF NOT EXISTS pods (               -- proof of delivery: the signed
     stored_path TEXT NOT NULL,                 -- where the file is kept (data/pod/, git-ignored)
     document    TEXT,                          -- what the paperwork agent read (JSON, paperwork/schema.py format)
     findings    TEXT,                          -- the checks' problems and notes (JSON)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS own_orders (         -- the shipper's own transport order (instead of Kargonaut's PDF)
+    id          INTEGER PRIMARY KEY,
+    load_id     INTEGER NOT NULL UNIQUE REFERENCES loads(id),   -- a new upload replaces the old one
+    shipper_id  INTEGER NOT NULL REFERENCES users(id),
+    file_name   TEXT NOT NULL,
+    stored_path TEXT NOT NULL,                 -- data/pod/ (git-ignored), like the other trip documents
+    document    TEXT,                          -- what the paperwork agent read (JSON)
+    findings    TEXT,                          -- Python's checks against the booking (JSON)
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -157,6 +179,19 @@ def init_db():
             conn.execute("ALTER TABLE loads ADD COLUMN booked_at TEXT")
         if "deliver_by" not in have:  # 27 Nov: an optional delivery deadline (offers are checked against it)
             conn.execute("ALTER TABLE loads ADD COLUMN deliver_by TEXT")
+        for column in ("piece_length_m", "piece_width_m", "piece_height_m"):   # 27 Nov: the cargo's size
+            if column not in have:
+                conn.execute(f"ALTER TABLE loads ADD COLUMN {column} REAL")
+        if "no_stacking" not in have:   # 27 Nov: the pieces can't go on top of each other
+            conn.execute("ALTER TABLE loads ADD COLUMN no_stacking INTEGER NOT NULL DEFAULT 0")
+        if "order_source" not in have:  # 27 Nov: Kargonaut's transport order or the shipper's own
+            conn.execute("ALTER TABLE loads ADD COLUMN order_source TEXT")
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+        for column in ("id_code", "legal_address", "bank_account", "contact_person"):   # 27 Nov: business details
+            if column not in have:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT")
+        if "order_preference" not in have:
+            conn.execute("ALTER TABLE users ADD COLUMN order_preference TEXT NOT NULL DEFAULT 'kargonaut'")
         have = {r["name"] for r in conn.execute("PRAGMA table_info(vehicles)")}
         for column in ("length_m", "width_m", "height_m"):   # 27 Nov: the truck body's size
             if column not in have:

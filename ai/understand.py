@@ -17,6 +17,7 @@ from datetime import date, timedelta
 
 from ai.common import date_said, hazmat_said, number_said
 from core.geo import CITIES, CITY_KA, CITY_STEMS_KA, city
+from number_check import _numbers
 from core.pricing import compare_types
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES, TRUCK_WORDS_KA, truck_type
 
@@ -44,15 +45,20 @@ SCHEMA = {
         "price_gel": {"type": ["number", "null"]},
         "cargo": {"type": ["string", "null"]},
         "pieces": {"type": ["integer", "null"]},
+        "piece_length_m": {"type": ["number", "null"]},
+        "piece_width_m": {"type": ["number", "null"]},
+        "piece_height_m": {"type": ["number", "null"]},
         "pickup_address": {"type": ["string", "null"]},
         "delivery_address": {"type": ["string", "null"]},
         "needs_liftgate": {"type": ["boolean", "null"]},
+        "no_stacking": {"type": ["boolean", "null"]},
         "hazmat": {"type": ["boolean", "null"]},
         "notes": {"type": ["string", "null"]},
     },
     "required": ["origin_city", "destination_city", "truck_type", "truck_type_reason", "weight_kg", "pickup_date",
-                 "pickup_date_words", "deliver_by", "deliver_by_words", "price_gel", "cargo", "pieces", "pickup_address", "delivery_address",
-                 "needs_liftgate", "hazmat", "notes"],
+                 "pickup_date_words", "deliver_by", "deliver_by_words", "price_gel", "cargo", "pieces",
+                 "piece_length_m", "piece_width_m", "piece_height_m", "pickup_address", "delivery_address",
+                 "needs_liftgate", "no_stacking", "hazmat", "notes"],
 }
 
 PROMPT = """A shipper on a Georgian freight marketplace describes a load they want to send (typed, pasted from a
@@ -73,7 +79,12 @@ doesn't say is null. Never guess, never fill in a typical value, never suggest a
 - price_gel: only a price the user names, in lari ("600 ლარამდე" = 600). null otherwise.
 - cargo: what is carried, short, in Georgian as written ("ავეჯი"). pieces: the number of pieces/pallets/boxes if
   given.
+- piece_length_m / piece_width_m / piece_height_m: the size of ONE piece, in metres, only if the user gives it
+  ("1,2x0,8x1,5" = 1.2, 0.8, 1.5; "120x80 სმ, სიმაღლე 150" = 1.2, 0.8, 1.5). Length x width x height in the
+  user's order. A size not given is null; never a typical pallet size.
 - pickup_address / delivery_address: a street address only if written, copied as written.
+- no_stacking: true only if the user says the pieces must not be put on top of each other ("ერთმანეთზე არ
+  დაიწყობა", "not stackable"), else null.
 - needs_liftgate: true only if a liftgate (ჰიდრავლიკური ბორტი) is asked for. hazmat: true only if the cargo is
   dangerous goods (gas cylinders, fuel, chemicals, explosives) or the user says so.
 - notes: other instructions for the driver (loading help, phone a person, time window), short, else null. Not
@@ -149,6 +160,18 @@ def _type_said(code, text):
             or TRUCK_LABEL[code].lower() in low or any(w in low for w in TYPE_WORDS_EN.get(code, [])))
 
 
+def size_said(metres, text):
+    """True if the user wrote this size: as metres (1.2), centimetres (120) or millimetres (1200). Exact to the
+    centimetre (number_said's ±0.5 is fine for kg or lari, not for metres)."""
+    try:
+        x = float(metres)
+    except (TypeError, ValueError):
+        return False
+    if not 0 < x <= 16:
+        return False
+    return any(abs(x - n / unit) < 0.005 for n in _numbers(text or "") for unit in (1, 100, 1000))
+
+
 def check(answer, text, today=None):
     """Gemini's reading -> the form's values, every one checked. Pure Python (tested without Gemini).
     Returns {"values", "filled", "missing", "notes", "unknown_places", "suggested"}."""
@@ -178,6 +201,12 @@ def check(answer, text, today=None):
         values["price_gel"] = int(round(a["price_gel"]))
     if a["pieces"] and number_said(a["pieces"], text) and a["pieces"] > 0:
         values["pieces"] = int(a["pieces"])
+    # One piece's size: each number must be written (in m, cm or mm), and all three, else none (the form's rule)
+    size = {f: a[f] for f in ("piece_length_m", "piece_width_m", "piece_height_m")}
+    if all(size_said(x, text) for x in size.values()):
+        values.update({f: round(float(x), 2) for f, x in size.items()})
+    elif any(size.values()):
+        notes.append("ერთი ადგილის ზომა სრულად ვერ ამოვიკითხე: ჩაწერეთ სიგრძე, სიგანე და სიმაღლე მეტრებში.")
 
     day = _day(a["pickup_date"], a["pickup_date_words"], text, today)
     if day and day < today:
@@ -217,6 +246,8 @@ def check(answer, text, today=None):
             values[field] = str(a[field]).strip()[:200]
     if a["needs_liftgate"] is True:
         values["needs_liftgate"] = True
+    if a["no_stacking"] is True and re.search(r"ერთმანეთზე|დაწყობ|დაიწყ|stack", (text or "").lower()):
+        values["no_stacking"] = True   # only with the user's own words for it
     if a["hazmat"] is True and hazmat_said(text):   # the model's yes alone isn't enough (ai/common.py)
         values["hazmat"] = True
 

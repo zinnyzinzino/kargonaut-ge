@@ -70,6 +70,18 @@ app = FastAPI(title="Kargonaut", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
+@app.middleware("http")
+async def revalidate_pages(request: Request, call_next):
+    """The page and its script/style must always be the same version: browsers kept an old app.js after an update
+    (27 Nov: the new registration form showed without its script). no-cache = ask the server each time; an unchanged
+    file still comes back as a cheap 304."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".js", ".css", ".html")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 def _ok(result, status=400):
     """A marketplace result, or its Georgian error as an HTTP error the page shows as it is."""
     if isinstance(result, dict) and "error" in result:
@@ -111,12 +123,29 @@ def meta():
         "cities": [{"name": c, "label": CITY_KA[c], "lat": CITY_COORDS[c][0], "lng": CITY_COORDS[c][1]} for c in CITIES],
         "truck_types": [{"code": t, "label": TRUCK_LABEL[t]} for t in TRUCK_TYPES],
         "legal_statuses": mp.LEGAL_STATUS_KA,
-        # The login page's one-click demo buttons: the first simulated shipper and driver that exist (with the
-        # user's own accounts seeded in, ნინო and ლევანი aren't there: the next demo accounts are used)
-        "demo_logins": [{"role": r["role"], "phone": r["phone"], "name": r["name"]} for r in (
-            db.one("SELECT role, phone, name FROM users WHERE is_demo = 1 AND role = ? ORDER BY id", (role,))
-            for role in ("shipper", "driver")) if r],
+        "demo_logins": demo_logins(),
     }
+
+
+def demo_logins():
+    """The login page's one-click demo buttons: one simulated account per case (27 Nov: a demo for every case),
+    shipper and carrier x private person / entrepreneur / company, and a carrier company with no trucks yet. The
+    first demo account of each kind (with the user's own accounts seeded in, theirs aren't demo: the next is used)."""
+    rows = db.rows("SELECT u.id, u.role, u.phone, u.name, u.legal_status, u.order_preference,"
+                   " (SELECT COUNT(*) FROM vehicles v WHERE v.driver_id = u.id) AS trucks"
+                   " FROM users u WHERE u.is_demo = 1 ORDER BY u.id")
+    role_ka = {"shipper": "გამგზავნი", "driver": "გადამზიდავი"}
+    out, seen = [], set()
+    for r in rows:
+        case = (r["role"], r["legal_status"], r["role"] == "driver" and r["trucks"] == 0)
+        if case in seen:
+            continue
+        seen.add(case)
+        extra = ("მანქანების გარეშე" if case[2] else f"{r['trucks']} მანქანა" if r["trucks"] > 1 else
+                 "საკუთარი შეკვეთა" if r["order_preference"] == "own" else "")
+        out.append({"role": r["role"], "phone": r["phone"], "name": r["name"], "legal_status": r["legal_status"],
+                    "label": " · ".join(x for x in (role_ka[r["role"]], mp.LEGAL_STATUS_KA[r["legal_status"]], extra) if x)})
+    return sorted(out, key=lambda x: (x["role"] != "shipper", mp.LEGAL_STATUSES.index(x["legal_status"]), x["label"]))
 
 
 @app.get("/api/health")
@@ -155,7 +184,23 @@ class RegisterIn(BaseModel):
     password: str
     city: str = ""
     legal_status: str = "person"
-    vehicle: dict = {}   # drivers: their truck (truck_type, capacity_kg, city, plate, ...), saved with the account
+    vehicle: dict = {}   # drivers: one truck (truck_type, capacity_kg, city, plate, ...), saved with the account
+    vehicles: list[dict] = []   # or several (a company's fleet)
+    trucks_later: bool = False  # or none now: added on the „მანქანები“ page
+    # entrepreneur / company (marketplace.validate_business); a private person leaves them empty
+    id_code: str = ""
+    legal_address: str = ""
+    bank_account: str = ""
+    contact_person: str = ""
+    order_preference: str = "kargonaut"   # shippers: Kargonaut's transport order or their own document
+
+
+class ProfileIn(BaseModel):
+    id_code: str = ""
+    legal_address: str = ""
+    bank_account: str = ""
+    contact_person: str = ""
+    order_preference: str = ""
 
 
 class LoginIn(BaseModel):
@@ -171,7 +216,9 @@ def _set_cookie(response, token):
 @app.post("/api/register")
 def register(body: RegisterIn, response: Response):
     _ok(mp.register(body.role, body.name, body.phone, body.password, body.city, body.legal_status,
-                    vehicle=body.vehicle))
+                    vehicle=body.vehicle, vehicles=body.vehicles, trucks_later=body.trucks_later,
+                    order_preference=body.order_preference,
+                    business={f: getattr(body, f) for f in mp.BUSINESS_FIELDS}))
     session = mp.login(body.phone, body.password)
     _set_cookie(response, session["token"])
     return session["user"]
@@ -196,6 +243,12 @@ def me(user=Depends(current_user)):
     return mp.public_user(user, with_phone=True)
 
 
+@app.put("/api/me")
+def update_me(body: ProfileIn, user=Depends(current_user)):
+    """The user's business details (ID code, legal address, IBAN, contact person) and default transport order."""
+    return _ok(mp.update_profile(user["id"], body.model_dump()))
+
+
 # ---------------------------------------------------------------- shipper side
 
 class LoadIn(BaseModel):
@@ -208,9 +261,13 @@ class LoadIn(BaseModel):
     price_gel: float = 0
     cargo: str = ""
     pieces: int = 0
+    piece_length_m: float = 0   # one piece's size, metres (optional, all three or none)
+    piece_width_m: float = 0
+    piece_height_m: float = 0
     pickup_address: str = ""
     delivery_address: str = ""
     needs_liftgate: bool = False
+    no_stacking: bool = False   # the pieces can't go on top of each other
     hazmat: bool = False
     notes: str = ""
 
@@ -235,10 +292,14 @@ def load_cancel(load_id: int, user=Depends(shipper)):
     return _ok(mp.cancel_load(user["id"], load_id))
 
 
+class AcceptIn(BaseModel):
+    order_source: str = ""   # 'kargonaut' or 'own'; empty = the shipper's default (profile)
+
+
 @app.post("/api/offers/{offer_id}/accept")
-def offer_accept(offer_id: int, user=Depends(shipper)):
+def offer_accept(offer_id: int, body: AcceptIn | None = None, user=Depends(shipper)):
     """The shipper books a driver: only this button does it, never the AI."""
-    result = _ok(mp.accept_offer(user["id"], offer_id))
+    result = _ok(mp.accept_offer(user["id"], offer_id, (body.order_source if body else "") or None))
     _tell_assistant(user["id"], f"the user accepted offer {offer_id}; load {result['id']} is booked")
     return result
 
@@ -255,6 +316,36 @@ def transport_order_pdf(load_id: int, user=Depends(current_user)):
         raise HTTPException(404 if data["error_code"] == "not_your_load" else 400, data["error"])
     return Response(transport_order.render(data), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{data["number"]}.pdf"'})
+
+
+class OrderSourceIn(BaseModel):
+    order_source: str
+
+
+@app.post("/api/loads/{load_id}/order-source")
+def load_order_source(load_id: int, body: OrderSourceIn, user=Depends(shipper)):
+    """Switch a booked trip between Kargonaut's transport order and the shipper's own document."""
+    return _ok(mp.set_order_source(user["id"], load_id, body.order_source))
+
+
+@app.post("/api/loads/{load_id}/own-order")
+def own_order_upload(load_id: int, file: UploadFile = File(...), user=Depends(shipper)):
+    """The shipper's own transport order (RC): the paperwork agent reads it, Python compares it with the booking
+    (price, cities, weight, plate). Problems don't block anything: both sides see them."""
+    _ok(mp.own_order_allowed(user["id"], load_id) or {})   # the rule's refusal, before any reading is paid for
+    name, path = _save_trip_document(load_id, file)
+    document, findings = _read_trip_document(path, name, user)
+    return _ok(mp.attach_own_order(user["id"], load_id, name, str(path), document, findings))
+
+
+@app.get("/api/loads/{load_id}/own-order/file")
+def own_order_download(load_id: int, user=Depends(current_user)):
+    """The shipper's own order document: only for the load's shipper and driver."""
+    from paperwork.extract import MIME_TYPES
+    found = mp.own_order_file(user["id"], load_id)
+    if not found or not Path(found[0]).exists():
+        raise HTTPException(404, "დოკუმენტი ვერ მოიძებნა.")
+    return FileResponse(found[0], media_type=MIME_TYPES.get(Path(found[0]).suffix.lower()), filename=found[1])
 
 
 # ---------------------------------------------------------------- ratings (both sides, after delivery)

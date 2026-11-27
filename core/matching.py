@@ -16,7 +16,51 @@ def compatibility_issues(vehicle, load):
         issues.append("no liftgate")
     if load.get("hazmat") and not vehicle.get("hazmat"):
         issues.append("not allowed to carry dangerous goods")
-    return issues
+    size = size_check(vehicle, load)
+    return issues + (size["issues"] if size else [])
+
+
+PIECE_SIZE = ("piece_length_m", "piece_width_m", "piece_height_m")   # one piece of the load, metres (all or none)
+
+
+def _m(x):
+    return f"{x:g} m"
+
+
+def size_check(vehicle, load):
+    """Does the load fit the truck's body? None if the load has no size.
+
+    The load gives one piece's length x width x height and the number of pieces; the driver may have given the
+    body's inside size (optional). Checked, only against what the driver entered:
+      - one piece fits on the floor: it may be turned (length and width swap), never tipped over;
+      - its height fits under the roof (a flatbed has no roof: no height limit);
+      - all pieces together are no more space than the body has (volume: a lenient test, it only refuses a load
+        that surely can't fit, never one a careful loader could fit);
+      - if the pieces can't be stacked (load["no_stacking"]): their floor area instead, flatbeds included.
+    Returns {"fits": no problems found, "unknown": the body's size is missing so the check is partial, "issues"}."""
+    piece = [load.get(k) for k in PIECE_SIZE]
+    if not all(piece):
+        return None
+    pl, pw, ph = piece
+    bl, bw, bh = vehicle.get("length_m"), vehicle.get("width_m"), vehicle.get("height_m")
+    roof = vehicle["truck_type"] != "flatbed"
+    issues = []
+    if bl and bw:
+        (p_short, p_long), (b_short, b_long) = sorted((pl, pw)), sorted((bl, bw))
+        if p_long > b_long or p_short > b_short:
+            issues.append(f"too big: a piece is {_m(pl)} x {_m(pw)}, the body floor is {_m(bl)} x {_m(bw)}")
+    if roof and bh and ph > bh:
+        issues.append(f"too tall: a piece is {_m(ph)} high, the body is {_m(bh)} high inside")
+    pieces = load.get("pieces") or 1
+    if load.get("no_stacking"):   # each piece needs its own floor (flatbeds too)
+        if bl and bw and not issues and pieces * pl * pw > bl * bw + 1e-9:
+            issues.append(f"too much floor: {pieces} pieces that can't be stacked need {pieces * pl * pw:.1f} m2, "
+                          f"the body floor is {bl * bw:.1f} m2")
+    elif roof and bl and bw and bh and not issues and pieces * pl * pw * ph > bl * bw * bh + 1e-9:
+        issues.append(f"too much: {pieces} pieces take {pieces * pl * pw * ph:.1f} m3, the body holds "
+                      f"{bl * bw * bh:.1f} m3")
+    unknown = not (bl and bw and (bh or not roof))
+    return {"fits": not issues, "unknown": unknown, "issues": issues}
 
 
 def best_vehicle_for_load(vehicles, load, start_city=None):

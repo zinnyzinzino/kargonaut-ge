@@ -45,6 +45,69 @@ const orderLink = (l, small = false) => ["booked", "in_transit", "delivered"].in
   ? `<a class="${small ? "link small" : "btn sm secondary"}" href="/api/loads/${l.id}/order.pdf" target="_blank" rel="noopener">`
     + `გადაზიდვის შეკვეთა (PDF)</a>` : "";
 
+// The trip's transport order: Kargonaut's PDF, or the shipper's own document (uploaded, read by the AI, checked by
+// Python against the booking: marketplace.own_order_check). The shipper can switch while the trip isn't delivered.
+function orderBlock(l, small = false) {
+  if (!["booked", "in_transit", "delivered"].includes(l.status)) return "";
+  const shipper = S.me.role === "shipper", open = l.status !== "delivered";
+  if (l.order_source !== "own") {
+    return orderLink(l, small) + (shipper && open
+      ? ` <button type="button" class="link small" data-order-source="own" data-load="${l.id}">ჩემი დოკუმენტის გამოყენება</button>` : "");
+  }
+  const o = l.own_order;
+  const finding = (f) => `<div class="finding ${f.severity === "problem" ? "" : "note"}">${esc(f.detail)}
+    ${f.action ? `<div class="todo">→ ${esc(f.action)}</div>` : ""}</div>`;
+  const have = o ? `<div class="pod-head"><span class="label-sm">გამგზავნის შეკვეთა</span>
+      <a href="/api/loads/${l.id}/own-order/file" target="_blank" rel="noopener">${esc(o.file_name)}</a>
+      ${o.problems.length ? `<span class="chip bad">${o.problems.length} პრობლემა</span>` : `<span class="chip go">✓ ემთხვევა ჯავშანს</span>`}</div>
+    <div class="small">${[o.number ? `№ ${esc(o.number)}` : "", o.rate != null ? `${esc(o.rate)} ${esc(o.currency || "")}` : "",
+                         o.issuer ? esc(o.issuer) : ""].filter(Boolean).join(" · ") || (o.read ? "" : "დოკუმენტი ვერ წავიკითხეთ")}</div>
+    ${small ? "" : o.problems.map(finding).join("") + o.notes.map(finding).join("")}`
+    : `<div class="pod-head"><span class="label-sm">გამგზავნის შეკვეთა</span>
+       <span class="muted small">${shipper ? "ატვირთეთ თქვენი შეკვეთა: მძღოლი აქ ნახავს." : "გამგზავნი საკუთარ შეკვეთას ატვირთავს."}</span></div>`;
+  const upload = shipper && open ? `<form class="own-order-form" data-own-order="${l.id}">
+      <label class="btn sm secondary">${o ? "ხელახლა ატვირთვა" : "ფოტო / PDF"}<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="sr-only"></label>
+      <span class="pod-name muted small">ფაილი არ არის არჩეული</span>
+      <button type="button" class="link small" data-own-order-demo>სადემონსტრაციო შეკვეთა</button>
+      <button class="btn sm go">ატვირთვა</button>
+      <button type="button" class="link small" data-order-source="kargonaut" data-load="${l.id}">Kargonaut-ის შეკვეთაზე დაბრუნება</button></form>` : "";
+  return `<div class="pod-box">${have}${upload}</div>`;
+}
+
+function wireOrderBlocks(root, after) {
+  $$("[data-order-source]", root).forEach((b) => b.onclick = async () => {
+    try {
+      await api(`/api/loads/${b.dataset.load}/order-source`, { json: { order_source: b.dataset.orderSource } });
+      toast(b.dataset.orderSource === "own" ? "ატვირთეთ თქვენი შეკვეთა: მძღოლი მას ტვირთის დეტალებში ნახავს."
+                                            : "ამ რეისზე Kargonaut-ის შეკვეთა (PDF) გამოიყენება.");
+      after();
+    } catch (err) { toast(err.message, true); }
+  });
+  $$(".own-order-form", root).forEach((f) => {
+    const show = (name) => { $(".pod-name", f).textContent = name; };
+    f.file.onchange = () => { f._file = f.file.files[0]; if (f._file) show(f._file.name); };
+    $("[data-own-order-demo]", f).onclick = async () => {   // simulated demo order (its reading ships with the app)
+      const blob = await (await fetch("/api/paperwork/demo/ge-06/rc.pdf")).blob();
+      f._file = new File([blob], "rc.pdf", { type: "application/pdf" });
+      show("rc.pdf (სიმულაცია)");
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!f._file) { toast("აირჩიეთ შეკვეთის ფაილი.", true); return; }
+      const data = new FormData();
+      data.append("file", f._file, f._file.name);
+      const button = $("button.go", f);
+      button.disabled = true; button.textContent = "ვკითხულობ შეკვეთას…";
+      try {
+        const r = await api(`/api/loads/${f.dataset.ownOrder}/own-order`, { method: "POST", body: data });
+        toast(r.own_order && r.own_order.problems.length ? "ატვირთულია. შეკვეთაში არის შეუსაბამობა: ნახეთ ქვემოთ."
+                                                         : "ატვირთულია. შეკვეთა ემთხვევა ჯავშანს.");
+        after();
+      } catch (err) { toast(err.message, true); button.disabled = false; button.textContent = "ატვირთვა"; }
+    };
+  });
+}
+
 // ---------------------------------------------------------------- proof of delivery
 function podBlock(l, compact = false) {
   const p = l.pod;
@@ -301,6 +364,7 @@ async function drawHeroMap() {
 // ---------------------------------------------------------------- sign in / register
 async function signedIn(user) {
   S.me = user;
+  $("#app-tabs").innerHTML = "";   // the header and tabs are drawn again for whoever signed in
   S.filter = "all"; S.open.clear(); S.mode = "list";
   resetChatView();
   go("#/app");
@@ -316,13 +380,72 @@ async function login(e) {
 async function register(e) {
   e.preventDefault();
   $("#register-error").textContent = "";
-  const all = formData(e.target), body = { vehicle: {} };
-  for (const [k, v] of Object.entries(all)) {
-    if (k.startsWith("v_")) { if (v !== "") body.vehicle[k.slice(2)] = v; } else body[k] = v;
+  const all = formData(e.target), body = { vehicles: [] };
+  for (const [k, v] of Object.entries(all)) if (!k.startsWith("v_")) body[k] = v;
+  const driver = body.role === "driver";
+  body.trucks_later = driver && $("#trucks-later").checked;
+  if (driver && !body.trucks_later) {
+    // each .truck-row is one truck (its fields share names across rows, so they're read row by row)
+    body.vehicles = $$("#truck-list .truck-row").map((row) => {
+      const v = {};
+      $$("input, select", row).forEach((x) => {
+        if (x.type === "checkbox") v[x.name.slice(2)] = x.checked;
+        else if (x.value !== "") v[x.name.slice(2)] = x.value;
+      });
+      return v;
+    });
   }
-  if (body.role !== "driver") body.vehicle = {};
-  try { signedIn(await api("/api/register", { json: body })); }
-  catch (err) { $("#register-error").textContent = err.message; }
+  try {
+    signedIn(await api("/api/register", { json: body }));
+    if (body.trucks_later) go("#/app/vehicles");   // straight to where the trucks are added
+  } catch (err) { $("#register-error").textContent = err.message; }
+}
+
+// One truck in the registration form. Names start with v_ (register() reads them row by row)
+function truckRow(n) {
+  return `<div class="truck-row" data-n="${n}">
+    <div class="truck-row-head"><b>მანქანა ${n}</b>${n > 1 ? `<button type="button" class="link small" data-drop-truck>წაშლა</button>` : ""}</div>
+    <div class="two">
+      <label class="field">ტიპი <select name="v_truck_type" class="type-select" required></select></label>
+      <label class="field">ტვირთამწეობა (კგ) <input name="v_capacity_kg" type="number" min="100" max="40000" placeholder="18000" required></label>
+    </div>
+    <div class="two">
+      <label class="field">სახელმწიფო ნომერი <input name="v_plate" placeholder="AA-123-BB" autocapitalize="characters" required></label>
+      <label class="field">სად დგას ახლა <select name="v_city" class="city-select" required></select></label>
+    </div>
+    <span class="field-label">ძარის ზომები შიგნით, მეტრებში <span class="opt">· არასავალდ.</span></span>
+    <div class="three">
+      <label class="field">სიგრძე <input name="v_length_m" type="number" step="0.01" min="1" max="16" placeholder="13.6"></label>
+      <label class="field">სიგანე <input name="v_width_m" type="number" step="0.01" min="1" max="3" placeholder="2.45"></label>
+      <label class="field">სიმაღლე <input name="v_height_m" type="number" step="0.01" min="0.5" max="4.5" placeholder="2.7"></label>
+    </div>
+    <div class="two">
+      <label class="check"><input type="checkbox" name="v_liftgate"> ჰიდრავლიკური ბორტი</label>
+      <label class="check"><input type="checkbox" name="v_hazmat"> სახიფათო ტვირთის ნებართვა</label>
+    </div></div>`;
+}
+
+function addTruckRow() {
+  const list = $("#truck-list"), n = $$(".truck-row", list).length + 1;
+  list.insertAdjacentHTML("beforeend", truckRow(n));
+  const row = list.lastElementChild;
+  fillSelects(row);
+  $("[name=v_city]", row).value = $("#register-form [name=city]").value;   // where the company is, to start with
+  const drop = $("[data-drop-truck]", row);
+  if (drop) drop.onclick = () => {
+    list.removeChild(row);
+    $$(".truck-row", list).forEach((r, i) => { r.dataset.n = i + 1; $(".truck-row-head b", r).textContent = `მანქანა ${i + 1}`; });
+  };
+}
+
+function wireTruckList() {
+  if (!$("#truck-list .truck-row")) addTruckRow();
+  $("#add-truck").onclick = addTruckRow;
+  $("#trucks-later").onchange = (e) => {   // later: the list is hidden and disabled (not checked, not sent)
+    $("#truck-list").disabled = e.target.checked;
+    $("#truck-list").classList.toggle("hidden", e.target.checked);
+    $("#add-truck").classList.toggle("hidden", e.target.checked);
+  };
 }
 
 // A driver registers with their truck: the truck section shows (and its fields count) only for drivers
@@ -331,26 +454,96 @@ function showTruckBox() {
   const box = $("#truck-box");
   box.classList.toggle("hidden", !driver);
   box.disabled = !driver;   // a disabled fieldset is neither checked nor sent
+  const order = $("#order-box");
+  order.classList.toggle("hidden", driver);
+  order.disabled = driver;
+  if (!order.innerHTML) order.innerHTML = `<h2>გადაზიდვის შეკვეთა</h2>${orderPreference()}`;
+  showBusinessBox();
+}
+
+// Entrepreneur / company: the registry details (ID code, legal address, contact person, IBAN) the order prints
+function showBusinessBox() {
+  const status = $("#legal-select").value || "person", box = $("#business-box");
+  const company = status === "company";
+  $("#name-label").textContent = company ? "კომპანიის დასახელება (მაგ. შპს „…“)" : "სახელი და გვარი";
+  box.classList.toggle("hidden", status === "person");
+  box.disabled = status === "person";
+  if (box.dataset.status !== status) {   // keep what was typed when only the role changes
+    box.dataset.status = status;
+    box.innerHTML = status === "person" ? "" : `<h2>${company ? "კომპანიის" : "ინდ. მეწარმის"} რეკვიზიტები</h2>
+      <p>იწერება გადაზიდვის შეკვეთაზე; ჩანს მხოლოდ ჯავშნის მეორე მხარისთვის.</p>${businessFields(status)}`;
+  }
 }
 
 // ---------------------------------------------------------------- the app shell
 const TABS = {
   shipper: [["loads", "ჩემი ტვირთები", renderShipperLoads], ["new", "ახალი ტვირთი", renderNewLoad],
-            ["docs", "დოკუმენტები", renderDocs]],
+            ["docs", "დოკუმენტები", renderDocs], ["profile", "პროფილი", renderProfile]],
   driver: [["board", "ტვირთების ბირჟა", renderDriverBoard], ["trips", "ჩემი რეისები", renderTrips],
-           ["vehicles", "მანქანები", renderVehicles], ["docs", "დოკუმენტები", renderDocs]],
+           ["vehicles", "მანქანები", renderVehicles], ["docs", "დოკუმენტები", renderDocs], ["profile", "პროფილი", renderProfile]],
 };
+
+// ---------------------------------------------------------------- profile: business details, default transport order
+// The business fields: shown for an entrepreneur or a company (marketplace.validate_business decides what's required)
+function businessFields(status, v = {}) {
+  if (status === "person") return "";
+  const company = status === "company";
+  return `<label class="field"><span>საიდენტიფიკაციო კოდი <span class="opt">· ${company ? "9" : "11"} ციფრი</span></span>
+      <input name="id_code" inputmode="numeric" maxlength="${company ? 9 : 11}" value="${esc(v.id_code || "")}" required></label>
+    <label class="field">იურიდიული მისამართი <input name="legal_address" value="${esc(v.legal_address || "")}" placeholder="ქალაქი, ქუჩა, ნომერი" required></label>
+    ${company ? `<label class="field">საკონტაქტო პირი <input name="contact_person" value="${esc(v.contact_person || "")}" placeholder="სახელი, გვარი" required></label>` : ""}
+    <label class="field"><span>საბანკო ანგარიში (IBAN) <span class="opt">· ინვოისებისთვის, არასავალდ.</span></span>
+      <input name="bank_account" value="${esc(v.bank_account || "")}" placeholder="GE00 XX00 0000 0000 0000 00" autocapitalize="characters"></label>`;
+}
+function orderPreference(current = "kargonaut") {
+  return `<div class="field"><span>გადაზიდვის შეკვეთა (RC) ნაგულისხმევად</span>
+    ${[["kargonaut", "Kargonaut-ის შაბლონი: PDF მზადდება ავტომატურად, როცა მძღოლს დაჯავშნით"],
+       ["own", "ჩემი დოკუმენტი: ჯავშნის შემდეგ ვტვირთავ ჩემს შეკვეთას, AI ამოწმებს ფასს და მარშრუტს"]]
+      .map(([v, t]) => `<label class="check small"><input type="radio" name="order_preference" value="${v}" ${current === v ? "checked" : ""}> ${t}</label>`).join("")}
+    <span class="muted small">ყოველ ჯავშანზე შეგიძლიათ შეცვალოთ.</span></div>`;
+}
+
+async function renderProfile() {
+  const me = S.me = await api("/api/me");
+  const view = $("#view");
+  view.innerHTML = `<div class="page-title"><h1>პროფილი</h1><span class="muted">${esc(me.name)} · ${esc(me.legal_status_label)}</span></div>
+    <form class="panel" id="profile-form" style="max-width:640px"><div class="panel-head"><h2>რეკვიზიტები</h2></div>
+      <div class="panel-body">
+        ${me.legal_status === "person"
+          ? `<p class="muted">ფიზიკური პირი: რეკვიზიტები საჭირო არ არის. პირად ნომერს არ ვითხოვთ: შეკვეთაზე ცარიელი ხაზია.</p>`
+          : `<p class="muted small">ეს მონაცემები იწერება გადაზიდვის შეკვეთაზე და ჩანს მხოლოდ ჯავშნის მეორე მხარისთვის.</p>
+             ${me.is_demo ? `<p class="muted small">სადემონსტრაციო ანგარიში: რეკვიზიტები არ აქვს (სიმულაცია).</p>` : ""}
+             ${businessFields(me.legal_status, me)}`}
+        ${me.role === "shipper" ? orderPreference(me.order_preference) : ""}
+        <p class="error-text" id="profile-error"></p>
+        <button class="btn">შენახვა</button>
+      </div></form>`;
+  if (me.is_demo) $$("#profile-form [required]").forEach((x) => (x.required = false));
+  $("#profile-form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#profile-error").textContent = "";
+    try {
+      S.me = await api("/api/me", { method: "PUT", json: formData(e.target) });
+      toast("პროფილი შენახულია.");
+      renderProfile();
+    } catch (err) { $("#profile-error").textContent = err.message; }
+  };
+}
 
 function setupShell() {
   const me = S.me;
   $("#who-name").textContent = me.name;
-  $("#who-role").textContent = (me.role === "shipper" ? "ტვირთის გამგზავნი" : "მძღოლი") + " · " + me.legal_status_label +
+  $("#who-name").title = me.name;   // the full name when it's cut short
+  $("#who-role").textContent = (me.role === "shipper" ? "ტვირთის გამგზავნი" : "გადამზიდავი") + " · " + me.legal_status_label +
     (me.rating && me.rating.count ? ` · ★ ${String(me.rating.average).replace(".", ",")} (${me.rating.count})` : "");
   $("#avatar").textContent = me.name.trim()[0] || "?";
   $("#demo-chip").classList.toggle("hidden", !me.is_demo);
-  $("#app-tabs").innerHTML = TABS[me.role].map(([id, label]) =>
+  // the profile isn't a tab (the bar is full): the name and avatar in the corner open it
+  $("#app-tabs").innerHTML = TABS[me.role].filter(([id]) => id !== "profile").map(([id, label]) =>
     `<button role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join("");
   $$("#app-tabs button").forEach((b) => b.onclick = () => go(`#/app/${b.dataset.tab}`));
+  $(".who .names").onclick = $("#avatar").onclick = () => go("#/app/profile");
+  $(".who .names").title = $("#avatar").title = "პროფილი და რეკვიზიტები";
   renderSuggestions();
 }
 
@@ -430,6 +623,10 @@ const truckSize = (v) => {
   if (!parts[0] && !parts[1] && !parts[2]) return "";
   return parts.map((x) => (x ? String(x).replace(".", ",") : "?")).join(" × ") + " მ";
 };
+// A load's weight, pieces and one piece's size, for the lists
+const pieceSize = (l) => l.piece_length_m
+  ? [l.piece_length_m, l.piece_width_m, l.piece_height_m].map((x) => String(x).replace(".", ",")).join(" × ") + " მ" : "";
+const loadAmount = (l) => `${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}${pieceSize(l) ? ` · ${pieceSize(l)}` : ""}`;
 function freeTrucksPopup(c, here) {
   const list = here.map((t) => `<div class="free-truck"><b>${esc(t.truck_label)}</b> · ${fmt(t.capacity_kg)} კგ
       ${truckSize(t) ? ` · ${truckSize(t)}` : ""}${t.liftgate ? " · ჰიდრ. ბორტი" : ""}${t.hazmat ? " · სახიფათო" : ""}
@@ -509,12 +706,12 @@ function shipperRow(l) {
     : `<span class="muted">${l.status === "open" ? (l.pending_offers ? "აირჩიეთ შეთავაზებებიდან" : "ელოდება შეთავაზებებს") : "—"}</span>`;
   return `<div class="board-row cols-shipper clickable ${S.open.has(l.id) ? "open" : ""}" data-id="${l.id}" style="--c:${c}">
     <div><div class="cell-title">№${l.id}</div><div>${esc(l.cargo || "ტვირთი")}</div>
-      <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div>
+      <div class="muted small">${loadAmount(l)}</div>
       <div class="muted small">შექმნილია ${esc((l.created_at || "").slice(0, 10))}</div></div>
     <div><span class="status" style="--c:${c}">${esc(l.status_label)}</span>
       ${l.waybill && !l.waybill.none_issued ? `<div><span class="chip ${l.waybill.problems.length ? "bad" : "go"}">ზედნადები ${l.waybill.problems.length ? "⚠" : "✓"}</span></div>` : ""}
       ${l.pod ? `<div><span class="chip ${l.pod.problems.length ? "bad" : "go"}">მიტანა ${l.pod.problems.length ? "⚠" : "✓"}</span></div>` : ""}
-      ${l.needs_liftgate ? `<div><span class="chip">ჰიდრ. ბორტი</span></div>` : ""}${l.hazmat ? `<div><span class="chip bad">სახიფათო</span></div>` : ""}</div>
+      ${l.needs_liftgate ? `<div><span class="chip">ჰიდრ. ბორტი</span></div>` : ""}${l.no_stacking ? `<div><span class="chip">არ იდება ერთმანეთზე</span></div>` : ""}${l.hazmat ? `<div><span class="chip bad">სახიფათო</span></div>` : ""}</div>
     <div><div class="label-sm">აღება</div>
       <div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
       <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div>
@@ -547,9 +744,11 @@ async function loadDetail(l) {
       `<div class="pills" style="margin:10px 0 0">${steps.map((s, i) =>
         `<span class="pill" style="--c:${i <= at ? "#34C17B" : "#3A4A5E"}"><span class="dot"></span>${s[1]}</span>`).join("")}</div>
        <p class="muted small">სტატუსს მძღოლი ცვლის: „ავიღე ტვირთი“, შემდეგ „მივიტანე“.</p>
-       <div class="detail-actions">${orderLink(l)}</div>` +
+       <div class="detail-actions">${l.order_source === "own" ? "" : orderBlock(l)}</div>` +
+      (l.order_source === "own" ? orderBlock(l) : "") +
       waybillBlock(l) + podBlock(l) + (l.can_rate ? ratingForm(l.id, "მძღოლი") : l.my_rating ? `<p>${given(l.my_rating)}</p>` : "");
     wireRatings(box, refresh);
+    wireOrderBlocks(box, refresh);
     return;
   }
   try {
@@ -560,30 +759,44 @@ async function loadDetail(l) {
       ? `<span class="chip go">✓ ასწრებს</span><div class="muted small num">≈ ${String(o.deadline.hours_needed).replace(".", ",")} სთ საჭესთან, ${o.deadline.hours_available} სთ-დან</div>`
       : `<span class="chip bad">⚠ ვერ ასწრებს</span><div class="muted small num">≈ ${String(o.deadline.hours_needed).replace(".", ",")} სთ საჭიროა, ${o.deadline.hours_available} სთ-ია</div>
          ${o.deadline.busy_with.map((b) => `<div class="small">იმავე დროს რეისი აქვს: ${esc(cityLabel(b.origin_city))} → ${esc(cityLabel(b.destination_city))}, ${esc(b.pickup_date)}</div>`).join("")}`;
+    // Python's size check (core/matching.size_check): the cargo against the truck body the driver entered
+    const hasSize = !!l.piece_length_m;
+    const sizeCell = (o) => !o.size ? "—" : !o.size.fits
+      ? `<span class="chip bad">⚠ არ ეტევა</span>`
+      : o.size.unknown
+        ? `<span class="chip">ძარის ზომა უცნობია</span><div class="muted small">დაურეკეთ და დააზუსტეთ</div>`
+        : `<span class="chip go">✓ ეტევა</span><div class="muted small num">ძარა ${truckSize(o)}</div>`;
     box.innerHTML = (r.offers.length ? `<table class="offers-table"><thead><tr><th>მძღოლი</th><th>მანქანა</th>
-        <th>აღებამდე</th><th>ფასი</th>${hasDeadline ? `<th>მიტანა ${esc(l.deliver_by)}-მდე</th>` : ""}<th>შეფასება</th><th>შეტყობინება</th><th></th></tr></thead><tbody>
+        <th>აღებამდე</th><th>ფასი</th>${hasSize ? `<th>ზომა (${esc(pieceSize(l))})</th>` : ""}${hasDeadline ? `<th>მიტანა ${esc(l.deliver_by)}-მდე</th>` : ""}<th>შეფასება</th><th>შეტყობინება</th><th></th></tr></thead><tbody>
         ${r.offers.map((o) => `<tr class="${o.id === r.recommended_offer_id ? "best" : ""} ${o.deadline && !o.deadline.on_time ? "late" : ""}">
           <td>${o.id === r.recommended_offer_id ? `<span class="chip go">რეკომენდებული</span><br>` : ""}<b>${esc(o.driver_name)}</b>
             <div>${stars(o.driver_rating)}</div><div class="muted small">${esc(o.legal_status_label)}${o.is_demo ? " · სიმულაცია" : ""}</div></td>
           <td>${esc(o.truck_label)}<div class="muted small">${fmt(o.capacity_kg)} კგ</div></td>
           <td class="num">${o.km_to_pickup != null ? fmt(o.km_to_pickup) + " კმ" : "—"}<div class="muted small">${esc(o.vehicle_city_label)}</div></td>
           <td class="money num">${gel(o.price_gel)}</td>
+          ${hasSize ? `<td>${sizeCell(o)}</td>` : ""}
           ${hasDeadline ? `<td>${deadlineCell(o)}</td>` : ""}
           <td>${o.price_verdict_label ? `<span class="chip ${VERDICT_CHIP[o.price_verdict] || ""}">${esc(o.price_verdict_label)}</span>` : "—"}</td>
           <td>${o.message ? "„" + esc(o.message) + "“" : `<span class="muted">—</span>`}</td>
           <td><button class="btn sm go" data-accept="${o.id}">მიღება</button></td></tr>`).join("")}
         </tbody></table><p class="muted small">${hasDeadline
           ? `რეკომენდაცია: ყველაზე დაბალი ფასი იმ მძღოლებს შორის, ვინც ვადაში ასწრებს (მისი მანქანის უკვე დაჯავშნილი რეისები + ეს რეისი, რეალური გზის დროით; დაშვება: დღეში 9 სთ საჭესთან, 1 სთ დატვირთვა-გადმოტვირთვა).${r.no_offer_makes_the_deadline ? " ⚠ ვადაში არცერთი არ ასწრებს." : ""}`
-          : "რეკომენდაცია: ყველაზე დაბალი ფასი; თანაბარ ფასზე — მანქანა, რომელიც აღებასთან უფრო ახლოსაა."}</p>`
+          : "რეკომენდაცია: ყველაზე დაბალი ფასი; თანაბარ ფასზე — მანქანა, რომელიც აღებასთან უფრო ახლოსაა."}</p>
+        <div class="order-choice"><span class="label-sm">გადაზიდვის შეკვეთა ამ რეისზე</span>
+          ${[["kargonaut", "Kargonaut-ის შაბლონი (PDF, მზადდება ავტომატურად)"], ["own", "ჩემი დოკუმენტი (ატვირთავთ დაჯავშნის შემდეგ)"]]
+            .map(([v, t]) => `<label class="check small"><input type="radio" name="order_source" value="${v}"
+              ${(S.me.order_preference || "kargonaut") === v ? "checked" : ""}> ${t}</label>`).join("")}</div>`
       : `<p class="muted">შეთავაზება ჯერ არ არის. მძღოლები ხედავენ ტვირთს ბირჟაზე.</p>`) +
       `<div class="detail-actions">${r.offers.length ? ask : askNoOffers}
         <button class="btn sm danger" data-cancel="${l.id}">ტვირთის გაუქმება</button></div>`;
   } catch (err) { box.innerHTML = `<p class="error-text">${esc(err.message)}</p>`; return; }
   $$("[data-accept]", box).forEach((b) => b.onclick = async () => {
     if (!confirm("დავჯავშნოთ ეს მძღოლი? დანარჩენი შეთავაზებები უარყოფილი იქნება.")) return;
+    const source = ($("input[name=order_source]:checked", box) || {}).value || "";
     try {
-      await api(`/api/offers/${b.dataset.accept}/accept`, { json: {} });
-      toast("მძღოლი დაჯავშნილია: კონტაქტი და გადაზიდვის შეკვეთა (PDF) ახლა ტვირთის დეტალებშია.");
+      await api(`/api/offers/${b.dataset.accept}/accept`, { json: { order_source: source } });
+      toast(source === "own" ? "მძღოლი დაჯავშნილია: ატვირთეთ თქვენი შეკვეთა ტვირთის დეტალებში."
+                             : "მძღოლი დაჯავშნილია: კონტაქტი და გადაზიდვის შეკვეთა (PDF) ახლა ტვირთის დეტალებშია.");
       refresh();
     }
     catch (err) { toast(err.message, true); }
@@ -628,9 +841,15 @@ function renderNewLoad() {
           <label class="field">თქვენი ფასი (₾) <input name="price_gel" type="number" min="1" required placeholder="სამართლიანი ფასი მარჯვნივ"></label>
           <label class="field">რა არის ტვირთი <input name="cargo" placeholder="მაგ. ავეჯი"></label>
           <label class="field">ადგილების რაოდენობა <input name="pieces" type="number" min="0"></label>
+          <label class="field" title="ერთი ადგილის (პალეტი, ყუთი, ნივთი) ზომა მეტრებში. თუ ჩაწერთ, ტვირთს მხოლოდ ის მანქანები ნახავენ, რომლის ძარაშიც ეტევა">
+            ადგილის სიგრძე, მ <input name="piece_length_m" type="number" step="0.01" min="0.05" max="16" placeholder="1.2"></label>
+          <label class="field">ადგილის სიგანე, მ <input name="piece_width_m" type="number" step="0.01" min="0.05" max="3" placeholder="0.8"></label>
+          <label class="field">ადგილის სიმაღლე, მ <input name="piece_height_m" type="number" step="0.01" min="0.05" max="4.5" placeholder="1.5"></label>
           <label class="field wide">აღების მისამართი <input name="pickup_address" placeholder="ქუჩა, ნომერი"></label>
           <label class="field wide">მიტანის მისამართი <input name="delivery_address" placeholder="ქუჩა, ნომერი"></label>
           <label class="check"><input type="checkbox" name="needs_liftgate"> საჭიროა ჰიდრავლიკური ბორტი</label>
+          <label class="check" title="მაგ. მინა, ავეჯი, მანქანა-დანადგარი: ყოველ ადგილს თავისი ადგილი სჭირდება ძარის იატაკზე">
+            <input type="checkbox" name="no_stacking"> ადგილები ერთმანეთზე არ იდება</label>
           <label class="check"><input type="checkbox" name="hazmat"> სახიფათო ტვირთი</label>
           <label class="field wide">შენიშვნა მძღოლისთვის <input name="notes"></label>
           <div class="wide" style="display:flex;gap:10px;align-items:center">
@@ -663,7 +882,8 @@ function renderNewLoad() {
 
 // ---- „აღწერეთ ტვირთი“: the AI reads the shipper's words into the form (ai/understand.py); nothing is saved
 const LOAD_FIELDS = ["origin_city", "destination_city", "truck_type", "weight_kg", "pickup_date", "deliver_by", "price_gel", "cargo",
-                     "pieces", "pickup_address", "delivery_address", "needs_liftgate", "hazmat", "notes"];
+                     "pieces", "piece_length_m", "piece_width_m", "piece_height_m", "pickup_address", "delivery_address",
+                     "needs_liftgate", "no_stacking", "hazmat", "notes"];
 
 function wireDescribe() {
   const text = $("#describe-text"), status = $("#describe-status");
@@ -856,12 +1076,12 @@ function driverRow(x) {
   const l = x.load, e = x.earnings, bad = e.driver_keeps_gel < 0;
   return `<div class="board-row cols-driver" style="--c:${bad ? "#FF7A59" : "#34C17B"}">
     <div><div class="cell-title">№${l.id}</div><div>${esc(l.cargo || "ტვირთი")}</div>
-      <div class="muted small">${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}</div>
+      <div class="muted small">${loadAmount(l)}</div>
       <div class="small">გამგზავნი ${stars(x.shipper_rating)}</div></div>
     <div><div class="line"><span class="ico pick"></span><span>${esc(l.origin_label)}${l.pickup_address ? ", " + esc(l.pickup_address) : ""}</span></div>
       <div class="line"><span class="ico drop"></span><span>${esc(l.destination_label)}${l.delivery_address ? ", " + esc(l.delivery_address) : ""}</span></div>
       <div class="line"><span class="ico date"></span><span class="num">${esc(l.pickup_date)}</span></div>${deadlineLine(l)}</div>
-    <div><span class="chip sign">${esc(l.truck_label)}</span>${l.needs_liftgate ? `<span class="chip">ჰიდრ. ბორტი</span>` : ""}
+    <div><span class="chip sign">${esc(l.truck_label)}</span>${l.needs_liftgate ? `<span class="chip">ჰიდრ. ბორტი</span>` : ""}${l.no_stacking ? `<span class="chip">არ იდება ერთმანეთზე</span>` : ""}
       ${l.hazmat ? `<span class="chip bad">სახიფათო</span>` : ""}${l.notes ? `<div class="muted small">${esc(l.notes)}</div>` : ""}</div>
     <div class="money num">${gel(l.price_gel)}</div>
     <div><div class="${bad ? "neg" : "pos"} num" style="font-size:17px">${gel(e.driver_keeps_gel)}</div>
@@ -935,7 +1155,7 @@ function tripRow(t) {
       <div class="muted small">${esc(l.shipper.legal_status_label)}</div>` : `<span class="muted small">კონტაქტი ჯავშნის შემდეგ ჩანს</span>`}</div>
     <div class="money num">${gel(t.kind === "offer" ? t.offer.price_gel : l.agreed_price_gel)}
       <div class="muted small">${t.kind === "offer" ? "თქვენი შეთავაზება" : "შეთანხმებული"}</div></div>
-    <div>${action}${t.kind === "job" ? `<div style="margin-top:6px">${orderLink(l, true)}</div>` : ""}
+    <div>${action}${t.kind === "job" ? `<div style="margin-top:6px">${orderBlock(l, true)}</div>` : ""}
       ${t.kind === "offer" ? askBtn(`ტვირთი №${l.id} (${loadFacts(l)}): ჩემი შეთავაზება ${Math.round(t.offer.price_gel)} ₾ კარგია? რამდენი დამრჩება?`, "კარგი შეთავაზებაა?") : ""}
       ${["booked", "in_transit"].includes(l.status) ? askBtn(`ტვირთი №${l.id} მიმაქვს ${kaIn(l.destination_city)}. ${kaFrom(l.destination_city)} ${kaToward(l.origin_city)} უკან ტვირთი ხომ არ არის?`, "უკან რამე ხომ არ არის?") : ""}</div>
   </div>`;
@@ -1221,11 +1441,13 @@ function draftCard(d) {
   $("#login-form").onsubmit = login;
   $("#register-form").onsubmit = register;
   $$("#register-form input[name=role]").forEach((r) => r.onchange = showTruckBox);
+  wireTruckList();
+  $("#legal-select").onchange = showBusinessBox;
   $("#register-form [name=city]").onchange = (e) => { $("#register-form [name=v_city]").value = e.target.value; };
   // One-click demo logins: whichever simulated accounts exist (from /api/meta)
   const ROLE_KA = { shipper: "გამგზავნი", driver: "მძღოლი" };
   $("#demo-logins").innerHTML = (S.meta.demo_logins || []).map((d) =>
-    `<button class="btn sm secondary" data-demo="${esc(d.phone)}">${ROLE_KA[d.role]} · ${esc(d.name.split(" ")[0])}</button>`).join(" ");
+    `<button class="btn sm secondary" data-demo="${esc(d.phone)}" title="${esc(d.name)}">${esc(d.label || ROLE_KA[d.role])}</button>`).join(" ");
   $("#demo-box").classList.toggle("hidden", !(S.meta.demo_logins || []).length);
   $$("[data-demo]").forEach((b) => b.onclick = () => {
     $("#login-form [name=phone]").value = b.dataset.demo;

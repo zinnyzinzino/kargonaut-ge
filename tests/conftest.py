@@ -41,7 +41,8 @@ def people():
     from datetime import date, timedelta
 
     import marketplace as mp
-    shipper = mp.register("shipper", "ნინო", "555000001", "password1", "Tbilisi", "entrepreneur")
+    shipper = mp.register("shipper", "ნინო", "555000001", "password1", "Tbilisi", "entrepreneur",
+                          business={"id_code": "00000000001", "legal_address": "თბილისი, საცდელი ქ. 1"})
     other = mp.register("shipper", "გიორგი", "555000002", "password1", "Kutaisi")
     driver = mp.register("driver", "ლევანი", "555000003", "password1", "Tbilisi",
                          vehicle={"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi", "plate": "TB-100-AA"})

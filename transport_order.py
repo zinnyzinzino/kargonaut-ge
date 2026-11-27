@@ -128,7 +128,12 @@ def render(data):
         [("", head), ("დამკვეთი (ტვირთის გამგზავნი)", head), ("გადამზიდავი", head)],
         ["სახელი / დასახელება", shipper["name"], driver["name"]],
         ["სამართლებრივი ფორმა", shipper["legal_status_label"], driver["legal_status_label"]],
-        ["პირადი / საიდენტიფიკაციო №", BLANK, BLANK],
+        # what the users gave at registration (validate_business); a person's personal number is never asked: blank
+        ["პირადი / საიდენტიფიკაციო №", shipper.get("id_code") or BLANK, driver.get("id_code") or BLANK],
+        ["იურიდიული მისამართი", shipper.get("legal_address") or BLANK, driver.get("legal_address") or BLANK],
+        *([["საკონტაქტო პირი", shipper.get("contact_person") or "—", driver.get("contact_person") or "—"]]
+          if shipper.get("contact_person") or driver.get("contact_person") else []),
+        ["საბანკო ანგარიში (IBAN)", shipper.get("bank_account") or BLANK, driver.get("bank_account") or BLANK],
         ["ტელეფონი", f"+995 {shipper['phone']}", f"+995 {driver['phone']}"],
         ["ავტომობილი", "", f"{vehicle['truck_label']}, {plate}" if vehicle else BLANK],
         ["ტვირთამწეობა", "", f"{_n(vehicle['capacity_kg'])} კგ" if vehicle else ""],
@@ -136,8 +141,8 @@ def render(data):
 
     # ---- 2. the shipment
     heading(2, "გადაზიდვის დეტალები")
-    needs = [x for x, on in (("ჰიდრავლიკური ბორტი", load.get("needs_liftgate")), ("სახიფათო ტვირთი", load.get("hazmat")))
-             if on]
+    needs = [x for x, on in (("ჰიდრავლიკური ბორტი", load.get("needs_liftgate")), ("სახიფათო ტვირთი", load.get("hazmat")),
+                             ("ადგილები ერთმანეთზე არ იდება", load.get("no_stacking"))) if on]
     rows([
         ["დატვირთვის ადგილი", load["origin_label"] + (f", {load['pickup_address']}" if load.get("pickup_address") else "")],
         ["დატვირთვის თარიღი", _date(load["pickup_date"])],
@@ -149,6 +154,9 @@ def render(data):
         ["ტვირთი", load.get("cargo") or BLANK],
         ["წონა", f"{_n(load['weight_kg'])} კგ"],
         ["ადგილების რაოდენობა", str(load["pieces"]) if load.get("pieces") else BLANK],
+        *([["ერთი ადგილის ზომა", " × ".join(f"{load[k]:g}".replace(".", ",") for k in
+                                             ("piece_length_m", "piece_width_m", "piece_height_m")) + " მ (სიგრძე × სიგანე × სიმაღლე)"]]
+          if load.get("piece_length_m") else []),
         ["ავტომობილის ტიპი", load["truck_label"]],
         ["განსაკუთრებული მოთხოვნები", ", ".join(needs) if needs else "—"],
         ["მანძილი", f"დაახლოებით {_n(load['loaded_km'])} კმ (საავტომობილო გზით, OpenStreetMap)" if load.get("loaded_km") else "—"],

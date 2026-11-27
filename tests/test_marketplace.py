@@ -9,6 +9,10 @@ from conftest import ROOT
 TOMORROW = (date.today() + timedelta(days=1)).isoformat()
 
 
+# An entrepreneur's registry details (test values, not a real registry entry)
+ENTREPRENEUR = {"id_code": "00000000001", "legal_address": "თბილისი, საცდელი ქ. 1"}
+
+
 def truck(**change):
     return {"truck_type": "dry_van", "capacity_kg": 18000, "city": "Tbilisi", "plate": "TB-100-AA", **change}
 
@@ -17,7 +21,7 @@ def client_for(role, phone, name="ტესტი", city="Tbilisi", vehicle=None
     """A signed-in browser. A driver registers with a truck (a Dry van in Tbilisi unless `vehicle` says otherwise)."""
     c = TestClient(server.app)
     r = c.post("/api/register", json={"role": role, "name": name, "phone": phone, "password": "password1",
-                                      "city": city, "legal_status": "entrepreneur",
+                                      "city": city, "legal_status": "entrepreneur", **ENTREPRENEUR,
                                       "vehicle": (vehicle or truck()) if role == "driver" else {}})
     assert r.status_code == 200, r.text
     return c
@@ -152,6 +156,27 @@ def test_a_vehicle_that_cannot_carry_it_cannot_offer():
     load = shipper.post("/api/loads", json=load_body()).json()
     assert driver.get("/api/loads/open").json()["loads"] == []
     assert driver.post(f"/api/loads/{load['id']}/offers", json={}).status_code == 400
+
+
+def test_a_load_too_big_for_the_body_is_not_shown_and_cannot_be_offered():
+    """The cargo's size decides like its weight: only trucks whose body it fits see it (when the driver gave the size)."""
+    shipper = client_for("shipper", "555000001")
+    small = client_for("driver", "555000002", vehicle=truck(truck_type="box_truck", capacity_kg=4000, plate="TB-200-AA",
+                                                           length_m=6.2, width_m=2.4, height_m=2.3))
+    unknown = client_for("driver", "555000003", vehicle=truck(truck_type="box_truck", capacity_kg=4000, plate="TB-300-AA"))
+    body = load_body(truck_type="box_truck", weight_kg=2000, pieces=2)
+    tall = shipper.post("/api/loads", json={**body, "piece_length_m": 2, "piece_width_m": 1, "piece_height_m": 2.5}).json()
+    assert tall["piece_height_m"] == 2.5
+    assert small.get("/api/loads/open").json()["loads"] == []                      # 2.5 m high, the body is 2.3 m
+    assert small.post(f"/api/loads/{tall['id']}/offers", json={}).status_code == 400
+    assert [x["load"]["id"] for x in unknown.get("/api/loads/open").json()["loads"]] == [tall["id"]]   # can't check
+    fits = shipper.post("/api/loads", json={**body, "piece_length_m": 2, "piece_width_m": 1, "piece_height_m": 2}).json()
+    for driver in (small, unknown):
+        assert driver.post(f"/api/loads/{fits['id']}/offers", json={}).status_code == 200
+    sizes = {o["driver_id"]: o["size"] for o in shipper.get(f"/api/loads/{fits['id']}/offers").json()["offers"]}
+    assert sorted((s["fits"], s["unknown"]) for s in sizes.values()) == [(True, False), (True, True)]
+    half = shipper.post("/api/loads", json={**body, "piece_length_m": 2})          # all three or none
+    assert half.status_code == 400 and "სამივე" in half.json()["detail"]
 
 
 def test_public_price_calculator():

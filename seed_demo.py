@@ -20,6 +20,7 @@ from datetime import date, timedelta
 
 import db
 import marketplace as mp
+from core.geo import CITY_KA
 from core.pricing import fair_price
 
 PASSWORD = "demo1234"
@@ -41,7 +42,32 @@ DRIVERS = [  # (name, legal status, [(truck type, capacity kg, city, liftgate)])
     ("ბესიკ ხუციშვილი", "person", [("box_truck", 5000, "Gori", True)]),
     ("ვახტანგ ჩიქოვანი", "entrepreneur", [("flatbed", 22000, "Batumi", False)]),
     ("სანდრო ბაქრაძე", "person", [("sprinter_van", 1200, "Tbilisi", False), ("box_truck", 3500, "Tbilisi", False)]),
+    # 27 Nov: every registration case has a demo. Added at the END so the phones, plates and load numbers above
+    # (used by the eval and the demo documents) don't change.
+    ("შპს „კოლხეთი ტრანსი“", "company", [("dry_van", 20000, "Poti", False), ("refrigerated", 15000, "Batumi", False),
+                                          ("box_truck", 4000, "Kutaisi", True)]),   # a fleet, registered as a list
+    ("შპს „ახალი გზა“", "company", []),   # registered with „მანქანებს მოგვიანებით დავამატებ“: no trucks yet
 ]
+NO_TRUCKS_HOME = "Tbilisi"   # where a carrier registered without trucks says it is
+
+
+def _demo_iban(n):
+    """A SIMULATED Georgian IBAN: bank code "DM" (demo, like the "DM" plates), check digits computed (ISO 13616),
+    so it passes the site's check but is no real account."""
+    bban = f"DM{n:016d}"
+    check = 98 - int("".join(str(int(c, 36)) for c in bban + "GE00")) % 97
+    return f"GE{check:02d}{bban}"
+
+
+def demo_business(status, n, home):
+    """SIMULATED registry details for a demo entrepreneur or company: ID codes of zeros (no real registry entry),
+    a "სადემონსტრაციო მისამართი" address and a "DM" IBAN, so the profile and the transport order show every
+    field. A private person has none."""
+    if status == "person":
+        return None
+    return {"id_code": f"{n:09d}" if status == "company" else f"{n:011d}",
+            "legal_address": f"{CITY_KA[home]}, სადემონსტრაციო მისამართი {n}", "bank_account": _demo_iban(n),
+            "contact_person": "საკონტაქტო პირი (სიმულაცია)" if status == "company" else None}
 # SIMULATED body sizes (inside, metres: length, width, height) by type, so the demo trucks show one on the map.
 # Usual sizes for such a body, not measured trucks; a flatbed has no height.
 DEMO_SIZES = {"dry_van": (13.6, 2.45, 2.7), "refrigerated": (13.3, 2.45, 2.6), "flatbed": (13.6, 2.5, None),
@@ -90,7 +116,11 @@ def seed(me=None):
     shippers = []
     for i, (name, status, home) in enumerate(SHIPPERS):
         own_name, number, password, demo = _account("shipper", i, next(phone), me)
-        made = mp.register("shipper", own_name or name, number, password, home, status, is_demo=demo)
+        # The user's own accounts register as a private person: the seed knows no registry details (ID code, address).
+        # Demo entrepreneurs and companies get SIMULATED ones; the demo company sends its own transport orders.
+        made = mp.register("shipper", own_name or name, number, password, home, status if demo else "person", is_demo=demo,
+                           business=demo_business(status, int(number[-2:]), home) if demo else None,
+                           order_preference="own" if demo and status == "company" else "kargonaut")
         if "error" in made:
             raise SystemExit(f"Can't create the shipper account {number}: {made['error']}")
         shippers.append(made)
@@ -101,12 +131,12 @@ def seed(me=None):
                    **dict(zip(("length_m", "width_m", "height_m"), DEMO_SIZES[kind]))}
                   for kind, kg, where, liftgate in vehicles]
         own_name, number, password, demo = _account("driver", i, next(phone), me)
-        d = mp.register("driver", own_name or name, number, password, vehicles[0][2], status, is_demo=demo,
-                        vehicle=trucks[0])
+        home = vehicles[0][2] if vehicles else NO_TRUCKS_HOME
+        d = mp.register("driver", own_name or name, number, password, home, status if demo else "person", is_demo=demo,
+                        vehicles=trucks, trucks_later=not trucks,
+                        business=demo_business(status, int(number[-2:]), home) if demo else None)
         if "error" in d:
             raise SystemExit(f"Can't create the driver account {number}: {d['error']}")
-        for truck in trucks[1:]:
-            mp.add_vehicle(d["id"], truck)
         drivers.append(d)
     loads = []
     for who, origin, dest, kind, kg, cargo, days, where in LOADS:
@@ -160,18 +190,21 @@ def trip_on_the_road(shippers, drivers):
     """One trip booked for the demo driver (ლევანი), ready for the whole document chain on one load (Gori -> Rustavi,
     6 boxes of spare parts, 900 kg): its transport order, then at „ავიღე ტვირთი“ the simulated waybill
     demo_documents/ge/ge-07/waybill.pdf (this truck's plate), then at „მივიტანე“ the simulated proof of delivery
-    ge-06/pod.pdf. Both readings ship with the app: no Gemini call on stage. (Until 27 Nov it started on the road.)"""
+    ge-06/pod.pdf. Both readings ship with the app: no Gemini call on stage. (Until 27 Nov it started on the road.)
+    The shipper is the demo company, which sends ITS OWN transport order (27 Nov): the trip waits for it, and the
+    company uploads the simulated ge-06/rc.pdf (the „სადემონსტრაციო შეკვეთა“ button), which matches this trip."""
     shipper, driver = shippers[3], drivers[0]
     vehicle = mp.vehicles_of(driver["id"])[0]
     with db.connect() as conn:
         return conn.execute(
             "INSERT INTO loads (shipper_id, origin_city, destination_city, truck_type, weight_kg, cargo, pieces,"
             " pickup_date, pickup_address, delivery_address, price_gel, notes, status, driver_id, vehicle_id,"
-            " agreed_price_gel, booked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " agreed_price_gel, booked_at, order_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (shipper["id"], "Gori", "Rustavi", vehicle["truck_type"], 900, "სათადარიგო ნაწილები", 6,
              date.today().isoformat(), "ცხინვალის გზატკეცილი №5", "მეგობრობის გამზ. 21", 310,
              "სადემონსტრაციო რეისი (სიმულაცია)", "booked", driver["id"], vehicle["id"], 310,
-             (date.today() - timedelta(days=1)).isoformat())).lastrowid
+             (date.today() - timedelta(days=1)).isoformat(),
+             "own" if shipper.get("order_preference") == "own" else "kargonaut")).lastrowid
 
 
 # Finished trips with ratings, so ratings show from the start: (shipper, driver, from, to, kg, days ago, price,
@@ -216,7 +249,7 @@ if __name__ == "__main__":
         if "--force" not in sys.argv:
             raise SystemExit("The database isn't empty. Use --force to delete everything and seed again.")
         with db.connect() as conn:
-            for table in ("pods", "ratings", "offers", "loads", "vehicles", "sessions", "users"):
+            for table in ("own_orders", "waybills", "pods", "ratings", "offers", "loads", "vehicles", "sessions", "users"):
                 conn.execute(f"DELETE FROM {table}")
     me = my_accounts()
     print(seed(me), "- demo password:", PASSWORD, "- phones 599000001 ...")

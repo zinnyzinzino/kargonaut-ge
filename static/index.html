@@ -160,37 +160,27 @@
       <form id="register-form">
         <div class="roles">
           <label class="role-opt"><input type="radio" name="role" value="shipper" checked><b>ვგზავნი ტვირთს</b><span>ფიზ. პირი, ინდ. მეწარმე, კომპანია</span></label>
-          <label class="role-opt"><input type="radio" name="role" value="driver"><b>ვარ მძღოლი</b><span>საკუთარი ან სამართავი მანქანით</span></label>
+          <label class="role-opt"><input type="radio" name="role" value="driver"><b>ვარ გადამზიდავი</b><span>მძღოლი, ინდ. მეწარმე ან კომპანია, ერთი ან მეტი მანქანით</span></label>
         </div>
-        <label class="field">სახელი და გვარი (ან კომპანია) <input name="name" autocomplete="name" required></label>
         <div class="two">
           <label class="field">სტატუსი <select name="legal_status" id="legal-select"></select></label>
           <label class="field">ქალაქი <select name="city" class="city-select"></select></label>
         </div>
+        <label class="field"><span id="name-label">სახელი და გვარი</span> <input name="name" autocomplete="name" required></label>
+        <!-- an entrepreneur's or company's details (filled by app.js businessFields; disabled = not sent) -->
+        <fieldset class="truck-box hidden" id="business-box" disabled></fieldset>
+        <!-- shippers: which transport order they use by default (app.js orderPreference) -->
+        <fieldset class="truck-box hidden" id="order-box"></fieldset>
         <label class="field">მობილური <input name="phone" inputmode="tel" placeholder="5XX XX XX XX" autocomplete="username" required></label>
         <label class="field">პაროლი (მინ. 8 სიმბოლო) <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
 
         <fieldset class="truck-box hidden" id="truck-box" disabled>
-          <h2>თქვენი მანქანა</h2>
-          <p>ტვირთებს მისი ტიპით, ტვირთამწეობით და ადგილით შეგირჩევთ. მეტი მანქანის დამატება შემდეგაც შეიძლება.</p>
-          <div class="two">
-            <label class="field">ტიპი <select name="v_truck_type" class="type-select" required></select></label>
-            <label class="field">ტვირთამწეობა (კგ) <input name="v_capacity_kg" type="number" min="100" max="40000" placeholder="18000" required></label>
-          </div>
-          <div class="two">
-            <label class="field">სახელმწიფო ნომერი <input name="v_plate" placeholder="AA-123-BB" autocapitalize="characters" required></label>
-            <label class="field">სად დგას ახლა <select name="v_city" class="city-select" required></select></label>
-          </div>
-          <span class="field-label">ძარის ზომები შიგნით, მეტრებში <span class="opt">· არასავალდ.</span></span>
-          <div class="three">
-            <label class="field">სიგრძე <input name="v_length_m" type="number" step="0.01" min="1" max="16" placeholder="13.6"></label>
-            <label class="field">სიგანე <input name="v_width_m" type="number" step="0.01" min="1" max="3" placeholder="2.45"></label>
-            <label class="field">სიმაღლე <input name="v_height_m" type="number" step="0.01" min="0.5" max="4.5" placeholder="2.7"></label>
-          </div>
-          <div class="two">
-            <label class="check"><input type="checkbox" name="v_liftgate"> ჰიდრავლიკური ბორტი</label>
-            <label class="check"><input type="checkbox" name="v_hazmat"> სახიფათო ტვირთის ნებართვა</label>
-          </div>
+          <h2>თქვენი მანქანები</h2>
+          <p>ტვირთებს მათი ტიპით, ტვირთამწეობით და ადგილით შეგირჩევთ. კომპანიას შეუძლია რამდენიმე მანქანის ერთად დამატება.</p>
+          <label class="check"><input type="checkbox" name="trucks_later" id="trucks-later"> მანქანებს რეგისტრაციის შემდეგ დავამატებ</label>
+          <!-- one .truck-row per truck (app.js truckRow); disabled when „later“ is ticked = neither checked nor sent -->
+          <fieldset class="truck-list" id="truck-list"></fieldset>
+          <button type="button" class="btn sm secondary" id="add-truck">+ კიდევ ერთი მანქანა</button>
           <p>როცა მანქანა „თავისუფალია“, გამგზავნები რუკაზე დაინახავენ მას, თქვენს სახელს და ტელეფონის ნომერს, რომ დაგირეკონ.</p>
         </fieldset>
 
@@ -241,7 +231,7 @@
       <span class="demo-chip hidden" id="demo-chip">სადემონსტრაციო</span>
       <span class="avatar" id="avatar"></span>
       <span class="names"><b id="who-name"></b><span class="role" id="who-role"></span></span>
-      <button class="bar-btn" id="chat-toggle" aria-expanded="true">
+      <button class="bar-btn" id="chat-toggle" aria-expanded="true" title="ასისტენტი">
         <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>ასისტენტი</button>
       <button class="bar-btn" id="logout" title="გასვლა">გასვლა</button>
     </div>

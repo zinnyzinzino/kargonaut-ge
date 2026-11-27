@@ -1,6 +1,6 @@
 """The pure-Python engines: every number the site and the AI show comes from here."""
 from core.geo import approach_leg, city
-from core.matching import compatibility_issues, rank_offers
+from core.matching import compatibility_issues, rank_offers, size_check
 from core.pricing import FAIR_MARKUP, compare_types, driver_earnings, fair_price, market_evidence, trip_cost
 from core.vehicles import truck_type
 
@@ -75,6 +75,28 @@ def test_compatibility():
     assert compatibility_issues(van, {"truck_type": "dry_van", "weight_kg": 19000})
     assert compatibility_issues(van, {"truck_type": "flatbed", "weight_kg": 1000})
     assert compatibility_issues(van, {"truck_type": "dry_van", "weight_kg": 10, "needs_liftgate": 1})
+
+
+def test_the_cargo_must_fit_the_body():
+    van = {"truck_type": "sprinter_van", "capacity_kg": 1500, "length_m": 4.3, "width_m": 1.75, "height_m": 1.9}
+    pallet = {"truck_type": "sprinter_van", "weight_kg": 500, "piece_length_m": 1.2, "piece_width_m": 0.8,
+              "piece_height_m": 1.5}
+    assert size_check(van, {**pallet, "pieces": 4}) == {"fits": True, "unknown": False, "issues": []}
+    assert size_check(van, {**pallet, "piece_length_m": 0.8, "piece_width_m": 1.2})["fits"]   # turned on the floor
+    assert "too tall" in compatibility_issues(van, {**pallet, "piece_height_m": 2.0})[0]      # never tipped over
+    assert "too big" in compatibility_issues(van, {**pallet, "piece_length_m": 5})[0]
+    assert "too much" in compatibility_issues(van, {**pallet, "pieces": 20})[0]                # 28.8 m3 > 14.3 m3
+    assert size_check(van, {"truck_type": "sprinter_van", "weight_kg": 500}) is None          # the load has no size
+    flatbed = {"truck_type": "flatbed", "capacity_kg": 20000, "length_m": 13.6, "width_m": 2.5, "height_m": None}
+    tall = {"truck_type": "flatbed", "weight_kg": 9000, "piece_length_m": 6, "piece_width_m": 2.4, "piece_height_m": 3.5}
+    assert size_check(flatbed, tall) == {"fits": True, "unknown": False, "issues": []}       # no roof on a flatbed
+    # Pieces that can't be stacked need their own floor: 4 pallets fit 4.3 x 1.75 m (3.84 of 7.5 m2), 8 don't
+    assert size_check(van, {**pallet, "pieces": 4, "no_stacking": 1})["fits"]
+    assert "too much floor" in size_check(van, {**pallet, "pieces": 8, "no_stacking": 1})["issues"][0]
+    assert size_check(van, {**pallet, "pieces": 8})["fits"]                                  # stacked: 11.5 of 14.3 m3
+    assert not size_check(flatbed, {**tall, "pieces": 10, "no_stacking": 1})["fits"]         # flatbeds too: 144 > 34 m2
+    unknown = size_check({"truck_type": "dry_van", "capacity_kg": 18000}, {**pallet, "truck_type": "dry_van"})
+    assert unknown == {"fits": True, "unknown": True, "issues": []}   # no body size: not refused, but said so
 
 
 def test_cheapest_offer_first_closer_vehicle_on_a_tie():

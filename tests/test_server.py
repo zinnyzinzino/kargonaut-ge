@@ -24,7 +24,7 @@ def test_demo_accounts_are_made_on_an_empty_database(monkeypatch):
     monkeypatch.setenv("KARGONAUT_DEMO_SEED", "1")
     with TestClient(server.app) as c:   # runs the startup step
         health = c.get("/api/health").json()
-        assert health["users"] == 14 and health["loads"] == 21   # 10 open + 8 finished + 1 on the road + the deadline load and the trip that clashes with it
+        assert health["users"] == 16 and health["loads"] == 21   # 27 Nov: + 2 carrier companies (a fleet, no trucks)   # 10 open + 8 finished + 1 on the road + the deadline load and the trip that clashes with it
         me = c.post("/api/login", json={"phone": "599000001", "password": "demo1234"}).json()
         assert me["is_demo"] is True
 
@@ -122,5 +122,7 @@ def test_the_seed_can_put_the_users_own_accounts_in_place_of_the_first_demo_ones
     d.post("/api/login", json={"phone": "555000102", "password": "mypass123"})
     assert d.get("/api/vehicles/mine").json()[0]["truck_type"] == "dry_van"
     assert c.post("/api/login", json={"phone": "599000001", "password": "demo1234"}).status_code == 401
-    logins = {x["role"]: x["phone"] for x in c.get("/api/meta").json()["demo_logins"]}
-    assert logins == {"shipper": "599000002", "driver": "599000006"}
+    logins = {x["label"]: x["phone"] for x in c.get("/api/meta").json()["demo_logins"]}
+    assert logins["გამგზავნი · ინდ. მეწარმე"] == "599000003"           # ნინო is the user's now: the next one
+    assert logins["გადამზიდავი · ინდ. მეწარმე"] == "599000006"         # likewise for ლევანი
+    assert not {"555000101", "555000102"} & set(logins.values())       # the user's own accounts are never a button

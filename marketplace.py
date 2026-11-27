@@ -19,13 +19,16 @@ from datetime import date, timedelta
 import db
 from core.geo import CITIES, CITY_KA, city, route
 from core.matching import (best_vehicle_for_load, compatibility_issues, deadline_check, rank_loads_for_driver,
-                           rank_offers)
+                           rank_offers, size_check)
 from core.pricing import fair_price
 from core.vehicles import TRUCK_LABEL, TRUCK_TYPES_TEXT, truck_type
 
 ROLES = ("shipper", "driver")
 LEGAL_STATUSES = ("person", "entrepreneur", "company")
 LEGAL_STATUS_KA = {"person": "ფიზიკური პირი", "entrepreneur": "ინდ. მეწარმე", "company": "კომპანია"}
+# The transport order a booking uses: Kargonaut's PDF (transport_order.py) or the shipper's own uploaded document
+ORDER_SOURCES = ("kargonaut", "own")
+ORDER_SOURCE_KA = {"kargonaut": "Kargonaut-ის შეკვეთა (შაბლონი)", "own": "ჩემი დოკუმენტი"}
 LOAD_STATUS_KA = {"open": "ღია", "booked": "დაჯავშნილი", "in_transit": "გზაში", "delivered": "მიტანილი",
                   "cancelled": "გაუქმებული"}
 OFFER_STATUS_KA = {"pending": "მოლოდინში", "accepted": "მიღებული", "declined": "უარყოფილი",
@@ -77,19 +80,90 @@ def check_password(password, stored):
     return hmac.compare_digest(hash_password(password, bytes.fromhex(salt)).split("$")[2], digest)
 
 
+BUSINESS_FIELDS = ("id_code", "legal_address", "bank_account", "contact_person")
+
+
 def public_user(u, with_phone=False):
+    """with_phone: the user themself, or the other side of a booking. They also see the business details (ID code,
+    legal address, bank account), which go on the transport order and the invoice."""
     view = {"id": u["id"], "role": u["role"], "name": u["name"], "city": u.get("city"),
             "city_label": CITY_KA.get(u.get("city"), u.get("city")), "legal_status": u["legal_status"],
             "legal_status_label": LEGAL_STATUS_KA[u["legal_status"]], "is_demo": bool(u.get("is_demo")),
             "rating": rating_summary(u["id"])}
     if with_phone:
         view["phone"] = u["phone"]
+        view.update({f: u.get(f) for f in BUSINESS_FIELDS})
+        view["order_preference"] = u.get("order_preference") or "kargonaut"
     return view
 
 
-def register(role, name, phone, password, city_name="", legal_status="person", is_demo=False, vehicle=None):
-    """A new account. A driver registers WITH their truck (vehicle: truck_type, capacity_kg, city, plate, and
-    optionally fuel_l_per_100km, cost_per_km, liftgate, hazmat): both are saved together, or neither."""
+def normalize_iban(value):
+    """'ge29 nb00 0000 0101 9049 17' -> 'GE29NB0000000101904917' if it is a well-formed Georgian IBAN (GE, 2 check
+    digits, 2-letter bank code, 16 digits) whose check digits are right (ISO 13616, mod 97); else None."""
+    text = re.sub(r"[\s\-]+", "", str(value or "")).upper()
+    if not re.fullmatch(r"GE\d{2}[A-Z]{2}\d{16}", text):
+        return None
+    return text if int("".join(str(int(c, 36)) for c in text[4:] + text[:4])) % 97 == 1 else None
+
+
+def validate_business(legal_status, values, is_demo=False):
+    """(clean business details, None) or (None, error). A private person gives none. An entrepreneur gives their ID
+    code (11 digits, the one in the business registry) and legal address; a company its ID code (9 digits), legal
+    address and a contact person. The bank account (IBAN) is optional for both, checked when given. Simulated demo
+    accounts have no registry details (nothing is invented for them)."""
+    v = values or {}
+    clean = {f: None for f in BUSINESS_FIELDS}
+    if legal_status == "person":
+        return clean, None
+    code = re.sub(r"\s+", "", str(v.get("id_code") or ""))
+    clean["legal_address"] = str(v.get("legal_address") or "").strip()[:200] or None
+    clean["contact_person"] = (str(v.get("contact_person") or "").strip()[:100] or None) if legal_status == "company" else None
+    digits = 9 if legal_status == "company" else 11
+    if code and not re.fullmatch(rf"\d{{{digits}}}", code):
+        return None, refuse("bad_id_code", f"საიდენტიფიკაციო კოდი: {digits} ციფრი"
+                            + (" (კომპანიის კოდი)." if digits == 9 else " (ინდ. მეწარმის კოდი, პირადი ნომერი)."),
+                            field="id_code")
+    clean["id_code"] = code or None
+    if v.get("bank_account"):
+        clean["bank_account"] = normalize_iban(v["bank_account"])
+        if not clean["bank_account"]:
+            return None, refuse("bad_iban", "ანგარიშის ნომერი (IBAN) არასწორია: GE, 2 ციფრი, ბანკის 2 ასო, 16 ციფრი.",
+                                field="bank_account")
+    if not is_demo:
+        need = {"id_code": "საიდენტიფიკაციო კოდი", "legal_address": "იურიდიული მისამართი"}
+        if legal_status == "company":
+            need["contact_person"] = "საკონტაქტო პირი"
+        missing = [f for f in need if not clean[f]]
+        if missing:
+            return None, refuse("business_missing", f"{LEGAL_STATUS_KA[legal_status]}: საჭიროა "
+                                + ", ".join(need[f] for f in missing) + ".", fields=missing)
+    return clean, None
+
+
+def update_profile(user_id, values):
+    """The user's own business details and (shippers) which transport order they use by default."""
+    u = get_user(user_id)
+    business, error = validate_business(u["legal_status"], values, bool(u.get("is_demo")))
+    if error:
+        return error
+    preference = values.get("order_preference") or u.get("order_preference") or "kargonaut"
+    if preference not in ORDER_SOURCES:
+        return refuse("bad_order_source", "აირჩიეთ: Kargonaut-ის შეკვეთა ან თქვენი დოკუმენტი.")
+    db.execute("UPDATE users SET " + ", ".join(f"{f} = ?" for f in business) + ", order_preference = ? WHERE id = ?",
+               (*business.values(), preference, user_id))
+    return public_user(get_user(user_id), with_phone=True)
+
+
+MAX_TRUCKS_AT_REGISTRATION = 20
+
+
+def register(role, name, phone, password, city_name="", legal_status="person", is_demo=False, vehicle=None,
+             business=None, order_preference="kargonaut", vehicles=None, trucks_later=False):
+    """A new account. A driver (carrier) registers with their trucks: `vehicles`, a list (or one `vehicle`): each
+    truck_type, capacity_kg, city, plate, optionally the body size, liftgate, hazmat. The account and all its trucks
+    are saved together, or nothing. trucks_later=True: no trucks now, added on the „მანქანები“ page (27 Nov: a
+    company with a fleet may not have every plate at hand). business: an entrepreneur's or company's details
+    (validate_business). order_preference: a shipper's default transport order, 'kargonaut' or 'own'."""
     if role not in ROLES:
         return refuse("bad_role", "აირჩიეთ: ტვირთის გამგზავნი ან მძღოლი.")
     name = (name or "").strip()
@@ -102,19 +176,36 @@ def register(role, name, phone, password, city_name="", legal_status="person", i
         return refuse("short_password", f"პაროლი უნდა იყოს მინიმუმ {MIN_PASSWORD} სიმბოლო.")
     if legal_status not in LEGAL_STATUSES:
         legal_status = "person"
+    details, error = validate_business(legal_status, business, is_demo)
+    if error:
+        return error
+    if order_preference not in ORDER_SOURCES:
+        order_preference = "kargonaut"
     home = city(city_name) if city_name else None
     if db.one("SELECT id FROM users WHERE phone = ?", (number,)):
         return refuse("phone_taken", "ამ ნომრით ანგარიში უკვე არსებობს: შედით სისტემაში.")
-    truck = None
+    trucks = []
     if role == "driver":
-        truck, error = validate_vehicle(vehicle)
-        if error:
-            return error
-    with db.connect() as conn:   # one transaction: no driver account without its truck
+        given = [v for v in [vehicle, *(vehicles or [])] if v]
+        if not given and not trucks_later:
+            return validate_vehicle(None)[1]   # "მანქანა: საჭიროა ..." (or choose to add them later)
+        if len(given) > MAX_TRUCKS_AT_REGISTRATION:
+            return refuse("too_many_trucks", f"რეგისტრაციისას მაქსიმუმ {MAX_TRUCKS_AT_REGISTRATION} მანქანა: "
+                          "დანარჩენი დაამატეთ „მანქანების“ გვერდზე.")
+        for i, v in enumerate(given):
+            truck, error = validate_vehicle(v)
+            if not error and truck["plate"] in {t["plate"] for t in trucks}:
+                error = refuse("plate_twice", f"ნომერი {truck['plate']} ორჯერ წერია.")
+            if error:   # which truck, when there are several
+                return {**error, "error": f"მანქანა №{i + 1}: " + error["error"]} if len(given) > 1 else error
+            trucks.append(truck)
+    with db.connect() as conn:   # one transaction: the account and all its trucks, or nothing
         user_id = conn.execute(
-            "INSERT INTO users (role, name, phone, password_hash, city, legal_status, is_demo) VALUES (?,?,?,?,?,?,?)",
-            (role, name, number, hash_password(password), home, legal_status, int(is_demo))).lastrowid
-        if truck:
+            "INSERT INTO users (role, name, phone, password_hash, city, legal_status, is_demo, order_preference, "
+            + ", ".join(details) + ") VALUES (?,?,?,?,?,?,?,?" + ",?" * len(details) + ")",
+            (role, name, number, hash_password(password), home, legal_status, int(is_demo), order_preference,
+             *details.values())).lastrowid
+        for truck in trucks:
             _insert_vehicle(conn, user_id, truck)
     return public_user(get_user(user_id), with_phone=True)
 
@@ -246,6 +337,9 @@ def update_vehicle(driver_id, vehicle_id, city_name=None, available=None):
 LOAD_REQUIRED = ("origin_city", "destination_city", "truck_type", "weight_kg", "pickup_date", "price_gel")
 LOAD_FIELD_KA = {"origin_city": "საიდან", "destination_city": "სადამდე", "truck_type": "მანქანის ტიპი",
                  "weight_kg": "წონა (კგ)", "pickup_date": "აღების თარიღი", "price_gel": "ფასი (₾)"}
+# One piece of the load, metres. Wider than 3 m or longer than 16 m isn't a normal truck (an oversize permit)
+PIECE_SIZE_RANGE = {"piece_length_m": (0.05, 16), "piece_width_m": (0.05, 3), "piece_height_m": (0.05, 4.5)}
+PIECE_SIZE_KA = {"piece_length_m": "სიგრძე", "piece_width_m": "სიგანე", "piece_height_m": "სიმაღლე"}
 
 
 def validate_load(values):
@@ -261,6 +355,7 @@ def validate_load(values):
         "pickup_address": (v.get("pickup_address") or "").strip()[:200] or None,
         "delivery_address": (v.get("delivery_address") or "").strip()[:200] or None,
         "needs_liftgate": _flag(v.get("needs_liftgate")), "hazmat": _flag(v.get("hazmat")),
+        "no_stacking": _flag(v.get("no_stacking")),
         "notes": (v.get("notes") or "").strip()[:500] or None,
         "reference": (v.get("reference") or "").strip()[:60] or None,
     }
@@ -293,6 +388,16 @@ def validate_load(values):
             return None, refuse("bad_date", "მიტანის ვადა ჩაწერეთ ასე: 2026-12-05.", field="deliver_by")
         if deadline < pickup:
             return None, refuse("deadline_before_pickup", "მიტანის ვადა აღების დღეზე ადრე ვერ იქნება.", field="deliver_by")
+    # One piece's size (optional): all three or none, so Python can check it against a truck body
+    size = {f: _number(v.get(f)) or None for f in PIECE_SIZE_RANGE}
+    given = [f for f in size if size[f]]
+    if given and len(given) < 3:
+        return None, refuse("size_incomplete", "ერთი ადგილის ზომა: ჩაწერეთ სამივე (სიგრძე, სიგანე, სიმაღლე) მეტრებში"
+                            " ან დატოვეთ ცარიელი.", fields=[f for f in size if not size[f]])
+    for field, (low, high) in PIECE_SIZE_RANGE.items():
+        if size[field] and not low <= size[field] <= high:
+            return None, refuse("bad_size", f"ადგილის {PIECE_SIZE_KA[field]} მეტრებში: {low}-დან {high}-მდე.", field=field)
+        clean[field] = round(size[field], 2) if size[field] else None
     clean["weight_kg"] = int(round(clean["weight_kg"]))
     clean["price_gel"] = round(clean["price_gel"], 2)
     return clean, None
@@ -313,6 +418,7 @@ def price_check(load):
 def load_view(load, viewer=None):
     """A load as users see it. Phone numbers are shared only between the two sides of a booking."""
     view = {**load, "needs_liftgate": bool(load["needs_liftgate"]), "hazmat": bool(load["hazmat"]),
+            "no_stacking": bool(load.get("no_stacking")),
             "origin_label": CITY_KA[load["origin_city"]], "destination_label": CITY_KA[load["destination_city"]],
             "truck_label": TRUCK_LABEL[load["truck_type"]], "status_label": LOAD_STATUS_KA[load["status"]],
             "loaded_km": (route(load["origin_city"], load["destination_city"]) or {}).get("distance_km")}
@@ -332,6 +438,9 @@ def load_view(load, viewer=None):
         view["pod"] = pod_view(load["id"])
     if viewer and load["status"] in ("in_transit", "delivered") and viewer["id"] in (load["shipper_id"], load.get("driver_id")):
         view["waybill"] = waybill_view(load["id"])   # what was handed over at pickup
+    if viewer and booked and viewer["id"] in (load["shipper_id"], load.get("driver_id")):
+        view["order_source_label"] = ORDER_SOURCE_KA.get(load.get("order_source") or "kargonaut")
+        view["own_order"] = own_order_view(load["id"]) if load.get("order_source") == "own" else None
     return view
 
 
@@ -456,11 +565,12 @@ def offers_for_load(shipper_id, load_id):
         return refuse("not_your_load", "ასეთი ტვირთი თქვენს ანგარიშზე არ არის.")
     raw = db.rows(
         "SELECT o.*, u.name AS driver_name, u.legal_status, u.is_demo, v.truck_type, v.capacity_kg, "
-        "v.city AS vehicle_city, v.plate FROM offers o JOIN users u ON u.id = o.driver_id "
+        "v.city AS vehicle_city, v.plate, v.length_m, v.width_m, v.height_m FROM offers o JOIN users u ON u.id = o.driver_id "
         "JOIN vehicles v ON v.id = o.vehicle_id WHERE o.load_id = ? AND o.status = 'pending'", (load_id,))
     check = price_check({**load})
     for o in raw:   # with a deadline: can this truck make it, given the trips it's already booked for?
         o["deadline"] = deadline_check(load, o["vehicle_city"], committed_trips(o["vehicle_id"], load))
+        o["size"] = size_check(o, load)   # the cargo's size against this truck's body (None: the load has no size)
     ranked = []
     for o in rank_offers(load, raw):
         verdict = price_check({**load, "price_gel": o["price_gel"]})
@@ -490,22 +600,39 @@ def committed_trips(vehicle_id, load):
                    (vehicle_id, load["id"], load["pickup_date"], load["deliver_by"]))
 
 
-def accept_offer(shipper_id, offer_id):
-    """The shipper books a driver: a button on the site, never the AI."""
+def accept_offer(shipper_id, offer_id, order_source=None):
+    """The shipper books a driver: a button on the site, never the AI. order_source: the transport order this trip
+    uses, 'kargonaut' (our PDF) or 'own' (the shipper uploads theirs); empty = the shipper's default."""
     offer = db.one("SELECT * FROM offers WHERE id = ?", (offer_id,))
     load = get_load(offer["load_id"]) if offer else None
     if not load or load["shipper_id"] != shipper_id:
         return refuse("not_your_load", "ეს შეთავაზება თქვენს ტვირთს არ ეკუთვნის.")
     if load["status"] != "open" or offer["status"] != "pending":
         return refuse("not_open", "ეს შეთავაზება აღარ არის აქტიური.")
+    source = order_source or get_user(shipper_id).get("order_preference") or "kargonaut"
+    if source not in ORDER_SOURCES:
+        return refuse("bad_order_source", "აირჩიეთ: Kargonaut-ის შეკვეთა ან თქვენი დოკუმენტი.")
     with db.connect() as conn:
         conn.execute("UPDATE offers SET status = 'accepted' WHERE id = ?", (offer_id,))
         conn.execute("UPDATE offers SET status = 'declined' WHERE load_id = ? AND id != ? AND status = 'pending'",
                      (load["id"], offer_id))
         conn.execute("UPDATE loads SET status = 'booked', driver_id = ?, vehicle_id = ?, agreed_price_gel = ?, "
-                     "booked_at = datetime('now') WHERE id = ?",
-                     (offer["driver_id"], offer["vehicle_id"], offer["price_gel"], load["id"]))
+                     "booked_at = datetime('now'), order_source = ? WHERE id = ?",
+                     (offer["driver_id"], offer["vehicle_id"], offer["price_gel"], source, load["id"]))
     return load_view(get_load(load["id"]), get_user(shipper_id))
+
+
+def set_order_source(shipper_id, load_id, source):
+    """The shipper switches a booked trip between Kargonaut's order and their own document (before delivery)."""
+    load = get_load(load_id)
+    if not load or load["shipper_id"] != shipper_id:
+        return refuse("not_your_load", "ასეთი ტვირთი თქვენს ანგარიშზე არ არის.")
+    if load["status"] not in ("booked", "in_transit"):
+        return refuse("not_booked", "შეკვეთის შეცვლა შეიძლება დაჯავშნილ ტვირთზე, მიტანამდე.")
+    if source not in ORDER_SOURCES:
+        return refuse("bad_order_source", "აირჩიეთ: Kargonaut-ის შეკვეთა ან თქვენი დოკუმენტი.")
+    db.execute("UPDATE loads SET order_source = ? WHERE id = ?", (source, load_id))
+    return load_view(get_load(load_id), get_user(shipper_id))
 
 
 def withdraw_offer(driver_id, offer_id):
@@ -570,6 +697,8 @@ def order_data(user_id, load_id):
         return refuse("not_your_load", "ეს ტვირთი თქვენს ანგარიშზე არ არის.")
     if load["status"] not in ("booked", "in_transit", "delivered"):
         return refuse("not_booked", "გადაზიდვის შეკვეთა მზადდება მას შემდეგ, რაც გამგზავნი შეთავაზებას მიიღებს.")
+    if load.get("order_source") == "own":   # one agreement per trip: the shipper's own document, not ours too
+        return refuse("own_order", "ამ ტვირთზე გამგზავნი საკუთარ შეკვეთას იყენებს: ის ტვირთის დეტალებშია.")
     shipper, driver = get_user(load["shipper_id"]), get_user(load["driver_id"])
     vehicle = db.one("SELECT * FROM vehicles WHERE id = ?", (load["vehicle_id"],))
     return {
@@ -733,6 +862,101 @@ def waybill_file(user_id, load_id):
     if not load or not w or not w["stored_path"] or user_id not in (load["shipper_id"], load.get("driver_id")):
         return None
     return w["stored_path"], w["file_name"]
+
+
+# ---------------------------------------------------------------- the shipper's own transport order (instead of ours)
+
+
+def own_order_check(load, vehicle, document):
+    """Python compares the shipper's own order, as the AI read it, with the booking: the agreed price (in lari),
+    the cities, the weight, the truck's plate. Findings in the paperwork format; problems don't block anything, both
+    sides see them with what to do."""
+    if not document:
+        return [{"check": "own_order_not_read", "severity": "note", "documents": [], "action": None,
+                 "detail": "დოკუმენტი ვერ წავიკითხეთ: შეამოწმეთ ხელით, რომ ფასი, მარშრუტი და მანქანა სწორია."}]
+    name, out = [document.get("name")], []
+
+    def problem(check, detail, action):
+        out.append({"check": check, "severity": "problem", "documents": name, "detail": detail, "action": action})
+
+    def note(check, detail):
+        out.append({"check": check, "severity": "note", "documents": name, "detail": detail, "action": None})
+
+    if document.get("kind") not in (None, "rate_confirmation"):
+        note("own_order_not_an_order", "ეს დოკუმენტი გადაზიდვის შეკვეთას არ ჰგავს: შეამოწმეთ, სწორი ფაილი ატვირთეთ?")
+    agreed, rate, currency = load.get("agreed_price_gel"), document.get("rate"), (document.get("currency") or "").upper()
+    if rate and currency in ("GEL", "₾", "ლარი"):
+        if agreed and abs(rate - agreed) > 0.5:
+            problem("own_order_price_mismatch", f"შეკვეთაში ფასია {rate:g} ₾, საიტზე შეთანხმებული კი {agreed:g} ₾.",
+                    "ფასი ორივე მხარისთვის ერთი უნდა იყოს: შეასწორეთ დოკუმენტი ან შეუთანხმდით მძღოლს.")
+    elif rate:
+        note("own_order_price_other_currency", f"შეკვეთაში ფასია {rate:g} {currency or '(ვალუტა არ წერია)'}: "
+             f"საიტზე შეთანხმებულია {agreed:g} ₾. შეამოწმეთ ხელით.")
+    else:
+        note("own_order_price_not_found", "შეკვეთაში ფასი ვერ ვიპოვეთ: შეამოწმეთ ხელით.")
+    # the cities, the weight and the plate: the same comparison as the waybill's, worded for an order
+    for f in waybill_check(load, vehicle, document):
+        f = {**f, "check": f["check"].replace("waybill_", "own_order_"),
+             "detail": f["detail"].replace("ზედნადებზე", "შეკვეთაში")}
+        if f["check"] == "own_order_plate_not_found":
+            continue   # an order made before the truck is known often has no plate: not worth a note
+        if f["severity"] == "problem":
+            f["action"] = "გადაამოწმეთ: ეს შეკვეთა ამ ტვირთისაა? შეასწორეთ და ატვირთეთ ხელახლა."
+        out.append(f)
+    return out
+
+
+def own_order_view(load_id):
+    """What both sides see about the shipper's own order, or None (not uploaded yet)."""
+    o = db.one("SELECT * FROM own_orders WHERE load_id = ?", (load_id,))
+    if not o:
+        return None
+    doc = json.loads(o["document"] or "null") or {}
+    findings = json.loads(o["findings"] or "[]")
+    return {"file_name": o["file_name"], "uploaded_at": o["created_at"], "read": bool(doc),
+            "rate": doc.get("rate"), "currency": doc.get("currency"), "issuer": doc.get("issuer"),
+            "number": doc.get("load_number"),
+            "problems": [f for f in findings if f.get("severity") == "problem"],
+            "notes": [f for f in findings if f.get("severity") != "problem"]}
+
+
+def own_order_allowed(shipper_id, load_id):
+    """None if this shipper may upload their own order for this load now, else the refusal."""
+    load = get_load(load_id)
+    if not load or load["shipper_id"] != shipper_id:
+        return refuse("not_your_load", "ასეთი ტვირთი თქვენს ანგარიშზე არ არის.")
+    if load["status"] not in ("booked", "in_transit"):
+        return refuse("not_booked", "საკუთარი შეკვეთა იტვირთება დაჯავშნილ ტვირთზე, მიტანამდე.")
+    if load.get("order_source") != "own":
+        return refuse("not_own_order", "ამ ტვირთზე Kargonaut-ის შეკვეთა გამოიყენება: ჯერ აირჩიეთ „ჩემი დოკუმენტი“.")
+    return None
+
+
+def attach_own_order(shipper_id, load_id, file_name, stored_path, document=None, findings=None):
+    """The shipper's own transport order for a booked trip: the file, what the AI read, Python's comparison. A new
+    upload replaces the old one."""
+    refused = own_order_allowed(shipper_id, load_id)
+    if refused:
+        return refused
+    load = get_load(load_id)
+    vehicle = db.one("SELECT * FROM vehicles WHERE id = ?", (load["vehicle_id"],))
+    findings = list(findings or []) + own_order_check(load, vehicle, document)
+    with db.connect() as conn:
+        conn.execute("DELETE FROM own_orders WHERE load_id = ?", (load_id,))
+        conn.execute("INSERT INTO own_orders (load_id, shipper_id, file_name, stored_path, document, findings)"
+                     " VALUES (?,?,?,?,?,?)",
+                     (load_id, shipper_id, file_name, stored_path,
+                      json.dumps(document, ensure_ascii=False) if document else None, json.dumps(findings, ensure_ascii=False)))
+    return load_view(get_load(load_id), get_user(shipper_id))
+
+
+def own_order_file(user_id, load_id):
+    """(path, file name) of the shipper's own order, for the load's shipper and driver only."""
+    load = get_load(load_id)
+    o = db.one("SELECT * FROM own_orders WHERE load_id = ?", (load_id,))
+    if not load or not o or user_id not in (load["shipper_id"], load.get("driver_id")):
+        return None
+    return o["stored_path"], o["file_name"]
 
 
 NEXT_STATUS = {"booked": "in_transit"}   # in_transit -> delivered only with a proof of delivery (deliver_with_pod)

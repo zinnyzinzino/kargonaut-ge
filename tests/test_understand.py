@@ -106,3 +106,19 @@ def test_a_delivery_deadline_is_read_from_the_users_words():
     made_up = check(answer(origin_city="Tbilisi", destination_city="Poti", deliver_by="2026-12-01",
                            deliver_by_words="1 დეკემბრამდე"), "თბილისიდან ფოთში", TODAY)
     assert "deliver_by" not in made_up["values"]
+
+
+def test_a_piece_size_is_read_in_metres_or_centimetres_and_never_guessed():
+    text = "თბილისიდან ბათუმში 4 პალეტი, თითო 120x80 სმ, სიმაღლე 150"
+    r = check(answer(origin_city="Tbilisi", destination_city="Batumi", pieces=4, piece_length_m=1.2, piece_width_m=0.8,
+                     piece_height_m=1.5), text, TODAY)
+    assert [r["values"][f] for f in ("piece_length_m", "piece_width_m", "piece_height_m")] == [1.2, 0.8, 1.5]
+    # A typical pallet height the user never wrote: the size is dropped and the form says what to add
+    r = check(answer(piece_length_m=1.2, piece_width_m=0.8, piece_height_m=1.8), "4 პალეტი 1,2x0,8", TODAY)
+    assert "piece_length_m" not in r["values"] and any("ზომა" in n for n in r["notes"])
+
+
+def test_no_stacking_needs_the_users_own_words():
+    said = check(answer(no_stacking=True), "6 პალეტი მინა, ერთმანეთზე არ დაიწყობა", TODAY)
+    assert said["values"]["no_stacking"] is True
+    assert "no_stacking" not in check(answer(no_stacking=True), "6 პალეტი მინა", TODAY)["values"]

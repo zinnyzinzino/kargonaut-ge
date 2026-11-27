@@ -149,6 +149,11 @@ a { color: var(--gold); }
   background: var(--surface); display: grid; gap: 12px; }
 .truck-box h2 { margin: 0; font-size: 16px; color: #fff; }
 .truck-box p { margin: -6px 0 0; color: var(--muted); font-size: 13px; }
+/* the registration's truck list: one framed card per truck (a company registers its fleet) */
+.truck-list { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; min-width: 0; }
+.truck-row { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 10px; }
+.truck-row-head { display: flex; justify-content: space-between; align-items: center; color: #fff; }
+#add-truck { justify-self: start; }
 .auth-foot { color: #5E6E80; font-size: 12px; }
 .auth-art { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 26px; padding: 40px;
   border-left: 1px solid rgba(255,255,255,.06); }
@@ -172,6 +177,11 @@ a { color: var(--gold); }
   place-items: center; font-weight: 800; flex: none; }
 .who .role { color: var(--muted); font-size: 12px; display: block; line-height: 1.2; }
 .who b { display: block; line-height: 1.2; }
+/* a long company name stays on one line in the header (the full name is in the profile) */
+.who .names { max-width: 175px; min-width: 0; cursor: pointer; }
+.who .names:hover b { color: var(--gold); }
+.who #avatar { cursor: pointer; }
+.who .names b, .who .role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .demo-chip { font-size: 11px; font-weight: 700; border: 1px solid var(--gold); color: var(--gold); border-radius: 6px; padding: 1px 7px; }
 .bar-btn { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer;
   font-weight: 600; display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
@@ -423,6 +433,15 @@ aside.chat { background: var(--surface); border-left: 1px solid var(--line); dis
 .toast.bad { background: var(--loss); color: #1C0700; }
 
 /* ---------------------------------------------------------------- small screens */
+/* a laptop: the bar (logo, 4 tabs, demo chip, name, 2 buttons) needs ~1410 px; tighten it, the chat button keeps its icon */
+@media (max-width: 1440px) {
+  .app-bar { gap: 14px; }
+  .app-bar nav button { padding: 0 10px; }
+  .who { gap: 8px; }
+  .who .names { max-width: 130px; }
+  #chat-toggle { font-size: 0; gap: 0; }
+  #chat-toggle svg { margin: 0; }
+}
 @media (max-width: 1250px) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
   aside.chat { position: fixed; right: 0; top: 62px; bottom: 0; width: min(400px, 100%); z-index: 1000; box-shadow: -8px 0 30px rgba(0,0,0,.5); }
