@@ -57,7 +57,7 @@ loosen a check to make a failing agent pass.
   it); an offer drafted at the shipper's price the driver never accepted (now `accept_shipper_price` must be
   explicit); "მოგება" (now forbidden in the driver's prompt). The affected cases then passed 5/5 (`2026-11-26_2317`).
 - 26 Nov, full run after the fixes, 21 cases (`driver-offer-shipper-price` added): **21/21**, 49 Gemini calls
-  (`2026-11-26_2318`). The current baseline: `--compare` new runs with it.
+  (`2026-11-26_2318`). The baseline until 27 Nov.
 - 27 Nov, after the delivery deadline (load №20 added to the demo shipper, so `draft-full-confirm` expects 5 open
   loads, not 4): **20/21**, 61 Gemini calls (`2026-11-27_0128`). The one fail, `driver-return-trip`, recommended
   the right load with the right numbers but wrote "ტვირთის ID: 10", which the check doesn't read as №10; re-run
@@ -66,3 +66,8 @@ loosen a check to make a failing agent pass.
   `draft-full-confirm` got an address turn, `vehicles-nearby` lost its "no phone" check. The affected cases 5/5
   (`2026-11-27_0202`); a reply said "a draft was prepared" while asking, so the tool now says `draft_made: false`,
   re-run 2/2 PASS with honest replies (`2026-11-27_0203`, `_0204`).
+- 27 Nov, full run after cargo size, company registration, own transport orders and the demo for every case (two
+  carrier companies added at the END of the demo carriers, so the eval's accounts and loads didn't change):
+  **21/21**, 58 Gemini calls (`2026-11-27_2352`); `--compare` with `2026-11-26_2318`: 21/21 -> 21/21.
+  `draft-price-you-choose` and `english-input` passed on the runner's retry after a Gemini error on the first try
+  (busy / rate limit; the runner doesn't keep the error). **The current baseline**: `--compare` new runs with it.

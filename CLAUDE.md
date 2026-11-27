@@ -126,7 +126,8 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
   BOL ≈ სასაქონლო ზედნადები (RS.ge e-waybill, the one official form: model its fields on the official form, not a
   guess), POD ≈ signed ზედნადები or მიღება-ჩაბარების აქტი. Next candidates: read the ზედნადები; a printable
   handover act for individuals; RS.ge e-waybill integration for businesses (needs their RS access).
-- Eval (`evals/`, see its README): 21 cases on real Gemini; baseline 21/21 on gemini-3.5-flash-lite (26 Nov).
+- Eval (`evals/`, see its README): 21 cases on real Gemini; baseline 21/21 on gemini-3.5-flash-lite (27 Nov,
+  `evals/results/2026-11-27_2352`, after cargo size, registration, own orders; 26 Nov's was 21/21 too).
   `python evals/selftest.py` first (also in pytest). Same rules as logimind-ai: read the reply before blaming the agent.
 - `paperwork/`: from logimind-ai, unchanged except `draft.py` (a document now becomes a marketplace load
   draft via `marketplace.draft_load`). Its notes are in `../logimind-ai/CLAUDE.md`.
