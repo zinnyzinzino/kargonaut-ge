@@ -392,11 +392,11 @@ def validate_load(values):
     size = {f: _number(v.get(f)) or None for f in PIECE_SIZE_RANGE}
     given = [f for f in size if size[f]]
     if given and len(given) < 3:
-        return None, refuse("size_incomplete", "ერთი ადგილის ზომა: ჩაწერეთ სამივე (სიგრძე, სიგანე, სიმაღლე) მეტრებში"
+        return None, refuse("size_incomplete", "ერთი პალეტის ზომა: ჩაწერეთ სამივე (სიგრძე, სიგანე, სიმაღლე) მეტრებში"
                             " ან დატოვეთ ცარიელი.", fields=[f for f in size if not size[f]])
     for field, (low, high) in PIECE_SIZE_RANGE.items():
         if size[field] and not low <= size[field] <= high:
-            return None, refuse("bad_size", f"ადგილის {PIECE_SIZE_KA[field]} მეტრებში: {low}-დან {high}-მდე.", field=field)
+            return None, refuse("bad_size", f"პალეტის {PIECE_SIZE_KA[field]} მეტრებში: {low}-დან {high}-მდე.", field=field)
         clean[field] = round(size[field], 2) if size[field] else None
     clean["weight_kg"] = int(round(clean["weight_kg"]))
     clean["price_gel"] = round(clean["price_gel"], 2)

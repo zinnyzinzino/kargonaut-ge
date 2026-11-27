@@ -45,6 +45,13 @@ class _Order(FPDF):
                         f"{datetime.now():%d.%m.%Y %H:%M} · გვერდი {self.page_no()}/{{nb}}", align="C")
 
 
+def _place(city, address):
+    """"ბათუმი, გორგილაძის ქ. 87"; the city once, also when the address already starts with it."""
+    if not address:
+        return city
+    return address if address.strip().startswith(city) else f"{city}, {address}"
+
+
 def render(data):
     """PDF bytes of one transport order. data: marketplace.order_data()."""
     load, shipper, driver, vehicle = data["load"], data["shipper"], data["driver"], data["vehicle"]
@@ -112,7 +119,7 @@ def render(data):
         pdf.set_draw_color(*LINE)
         pdf.set_line_width(0.2)
         with pdf.table(col_widths=widths, first_row_as_headings=False, borders_layout="HORIZONTAL_LINES",
-                       line_height=4.8, padding=(0.7, 2), cell_fill_mode="NONE") as t:
+                       line_height=4.5, padding=(0.7, 2), cell_fill_mode="NONE") as t:
             for row in table_rows:
                 r = t.row()
                 for i, value in enumerate(row):
@@ -127,37 +134,32 @@ def render(data):
     rows([
         [("", head), ("დამკვეთი (ტვირთის გამგზავნი)", head), ("გადამზიდავი", head)],
         ["სახელი / დასახელება", shipper["name"], driver["name"]],
-        ["სამართლებრივი ფორმა", shipper["legal_status_label"], driver["legal_status_label"]],
         # what the users gave at registration (validate_business); a person's personal number is never asked: blank
-        ["პირადი / საიდენტიფიკაციო №", shipper.get("id_code") or BLANK, driver.get("id_code") or BLANK],
+        ["ფორმა, პირადი / საიდ. №", *(f"{p['legal_status_label']}, № {p.get('id_code') or BLANK}" for p in (shipper, driver))],
         ["იურიდიული მისამართი", shipper.get("legal_address") or BLANK, driver.get("legal_address") or BLANK],
         *([["საკონტაქტო პირი", shipper.get("contact_person") or "—", driver.get("contact_person") or "—"]]
           if shipper.get("contact_person") or driver.get("contact_person") else []),
         ["საბანკო ანგარიში (IBAN)", shipper.get("bank_account") or BLANK, driver.get("bank_account") or BLANK],
         ["ტელეფონი", f"+995 {shipper['phone']}", f"+995 {driver['phone']}"],
-        ["ავტომობილი", "", f"{vehicle['truck_label']}, {plate}" if vehicle else BLANK],
-        ["ტვირთამწეობა", "", f"{_n(vehicle['capacity_kg'])} კგ" if vehicle else ""],
+        ["ავტომობილი", "", f"{vehicle['truck_label']}, {plate}, {_n(vehicle['capacity_kg'])} კგ" if vehicle else BLANK],
     ], (56, 59, 59))
 
     # ---- 2. the shipment
     heading(2, "გადაზიდვის დეტალები")
     needs = [x for x, on in (("ჰიდრავლიკური ბორტი", load.get("needs_liftgate")), ("სახიფათო ტვირთი", load.get("hazmat")),
-                             ("ადგილები ერთმანეთზე არ იდება", load.get("no_stacking"))) if on]
+                             ("პალეტები ერთმანეთზე არ იდება", load.get("no_stacking"))) if on]
     rows([
-        ["დატვირთვის ადგილი", load["origin_label"] + (f", {load['pickup_address']}" if load.get("pickup_address") else "")],
+        ["დატვირთვის ადგილი", _place(load["origin_label"], load.get("pickup_address"))],
         ["დატვირთვის თარიღი", _date(load["pickup_date"])],
-        ["გადმოტვირთვის ადგილი",
-         load["destination_label"] + (f", {load['delivery_address']}" if load.get("delivery_address") else "")],
+        ["გადმოტვირთვის ადგილი", _place(load["destination_label"], load.get("delivery_address"))],
         *([["მიტანის ვადა", _date(load["deliver_by"]) + "-მდე (ჩათვლით)"],
            # the amount is the two sides' agreement (Civil Code: პირგასამტეხლო); the site never fills it in
            ["დაგვიანების პირგასამტეხლო", BLANK]] if load.get("deliver_by") else []),
-        ["ტვირთი", load.get("cargo") or BLANK],
-        ["წონა", f"{_n(load['weight_kg'])} კგ"],
-        ["ადგილების რაოდენობა", str(load["pieces"]) if load.get("pieces") else BLANK],
-        *([["ერთი ადგილის ზომა", " × ".join(f"{load[k]:g}".replace(".", ",") for k in
-                                             ("piece_length_m", "piece_width_m", "piece_height_m")) + " მ (სიგრძე × სიგანე × სიმაღლე)"]]
-          if load.get("piece_length_m") else []),
-        ["ავტომობილის ტიპი", load["truck_label"]],
+        ["ტვირთი, წონა", f"{load.get('cargo') or BLANK}, {_n(load['weight_kg'])} კგ"],
+        # the count, and one piece's size when given (the booked truck's type is in the parties' table)
+        ["პალეტები / ყუთები", (str(load["pieces"]) if load.get("pieces") else BLANK) + (
+            ", თითო " + " × ".join(f"{load[k]:g}".replace(".", ",") for k in ("piece_length_m", "piece_width_m", "piece_height_m"))
+            + " მ (სიგრძე × სიგანე × სიმაღლე)" if load.get("piece_length_m") else "")],
         ["განსაკუთრებული მოთხოვნები", ", ".join(needs) if needs else "—"],
         ["მანძილი", f"დაახლოებით {_n(load['loaded_km'])} კმ (საავტომობილო გზით, OpenStreetMap)" if load.get("loaded_km") else "—"],
         ["შენიშვნა", load.get("notes") or "—"],
@@ -180,21 +182,23 @@ def render(data):
                            "აქტი), რომელსაც გადამზიდავი ტვირთავს Kargonaut-ზე. ამ შეკვეთით გაუთვალისწინებელი საკითხები "
                            "რეგულირდება საქართველოს კანონმდებლობით.", align="L", new_x="LMARGIN", new_y="NEXT")
 
-    # ---- signatures
-    pdf.ln(5)
-    if pdf.get_y() > pdf.h - pdf.b_margin - 34:   # the signatures need about 32 mm
-        pdf.add_page()
+    # ---- signatures: who and the name (a long name wraps), then both signature lines at the same height
+    pdf.ln(4)
     half = width / 2
+    sides = (("დამკვეთი", shipper), ("გადამზიდავი", driver))
+    pdf.set_font("Noto", "", 9.5)
+    name_lines = max(len(pdf.multi_cell(half - 8, 5, p["name"], dry_run=True, output="LINES")) for _, p in sides)
+    if pdf.get_y() + 6 + 5 * name_lines + 22 > pdf.h - pdf.b_margin:   # never split across pages
+        pdf.add_page()
     y = pdf.get_y()
-    for i, (who, person) in enumerate((("დამკვეთი", shipper), ("გადამზიდავი", driver))):
+    for i, (who, person) in enumerate(sides):
         x = pdf.l_margin + i * half
         pdf.set_xy(x, y)
         pdf.set_font("Noto", "B", 10)
         pdf.cell(half - 8, 6, who, new_x="LEFT", new_y="NEXT")
         pdf.set_font("Noto", "", 9.5)
-        pdf.cell(half - 8, 6, person["name"], new_x="LEFT", new_y="NEXT")
-        pdf.ln(7)
-        pdf.set_x(x)
+        pdf.multi_cell(half - 8, 5, person["name"], align="L", new_x="LEFT", new_y="NEXT")
+        pdf.set_xy(x, y + 6 + 5 * name_lines + 10)   # room to sign above the line
         pdf.set_draw_color(*INK)
         pdf.line(x, pdf.get_y(), x + half - 14, pdf.get_y())
         pdf.ln(1.5)

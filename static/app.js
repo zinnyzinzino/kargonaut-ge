@@ -626,7 +626,7 @@ const truckSize = (v) => {
 // A load's weight, pieces and one piece's size, for the lists
 const pieceSize = (l) => l.piece_length_m
   ? [l.piece_length_m, l.piece_width_m, l.piece_height_m].map((x) => String(x).replace(".", ",")).join(" × ") + " მ" : "";
-const loadAmount = (l) => `${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} ადგ.` : ""}${pieceSize(l) ? ` · ${pieceSize(l)}` : ""}`;
+const loadAmount = (l) => `${fmt(l.weight_kg)} კგ${l.pieces ? ` · ${l.pieces} პალეტი/ყუთი` : ""}${pieceSize(l) ? ` · ${pieceSize(l)}` : ""}`;
 function freeTrucksPopup(c, here) {
   const list = here.map((t) => `<div class="free-truck"><b>${esc(t.truck_label)}</b> · ${fmt(t.capacity_kg)} კგ
       ${truckSize(t) ? ` · ${truckSize(t)}` : ""}${t.liftgate ? " · ჰიდრ. ბორტი" : ""}${t.hazmat ? " · სახიფათო" : ""}
@@ -840,16 +840,16 @@ function renderNewLoad() {
             title="თუ ტვირთი გარკვეულ დღემდე უნდა ჩავიდეს: შეთავაზებებს ამ ვადით შევამოწმებთ"></label>
           <label class="field">თქვენი ფასი (₾) <input name="price_gel" type="number" min="1" required placeholder="სამართლიანი ფასი მარჯვნივ"></label>
           <label class="field">რა არის ტვირთი <input name="cargo" placeholder="მაგ. ავეჯი"></label>
-          <label class="field">ადგილების რაოდენობა <input name="pieces" type="number" min="0"></label>
-          <label class="field" title="ერთი ადგილის (პალეტი, ყუთი, ნივთი) ზომა მეტრებში. თუ ჩაწერთ, ტვირთს მხოლოდ ის მანქანები ნახავენ, რომლის ძარაშიც ეტევა">
-            ადგილის სიგრძე, მ <input name="piece_length_m" type="number" step="0.01" min="0.05" max="16" placeholder="1.2"></label>
-          <label class="field">ადგილის სიგანე, მ <input name="piece_width_m" type="number" step="0.01" min="0.05" max="3" placeholder="0.8"></label>
-          <label class="field">ადგილის სიმაღლე, მ <input name="piece_height_m" type="number" step="0.01" min="0.05" max="4.5" placeholder="1.5"></label>
+          <label class="field">პალეტების / ყუთების რაოდენობა <input name="pieces" type="number" min="0"></label>
+          <label class="field" title="ერთი პალეტის, ყუთის ან ნივთის ზომა მეტრებში. თუ ჩაწერთ, ტვირთს მხოლოდ ის მანქანები ნახავენ, რომლის ძარაშიც ეტევა">
+            პალეტის სიგრძე, მ <input name="piece_length_m" type="number" step="0.01" min="0.05" max="16" placeholder="1.2"></label>
+          <label class="field">პალეტის სიგანე, მ <input name="piece_width_m" type="number" step="0.01" min="0.05" max="3" placeholder="0.8"></label>
+          <label class="field">პალეტის სიმაღლე, მ <input name="piece_height_m" type="number" step="0.01" min="0.05" max="4.5" placeholder="1.5"></label>
           <label class="field wide">აღების მისამართი <input name="pickup_address" placeholder="ქუჩა, ნომერი"></label>
           <label class="field wide">მიტანის მისამართი <input name="delivery_address" placeholder="ქუჩა, ნომერი"></label>
           <label class="check"><input type="checkbox" name="needs_liftgate"> საჭიროა ჰიდრავლიკური ბორტი</label>
-          <label class="check" title="მაგ. მინა, ავეჯი, მანქანა-დანადგარი: ყოველ ადგილს თავისი ადგილი სჭირდება ძარის იატაკზე">
-            <input type="checkbox" name="no_stacking"> ადგილები ერთმანეთზე არ იდება</label>
+          <label class="check" title="მაგ. მინა, ავეჯი, მანქანა-დანადგარი: ყოველ პალეტს თავისი ადგილი სჭირდება ძარის იატაკზე">
+            <input type="checkbox" name="no_stacking"> პალეტები ერთმანეთზე არ იდება</label>
           <label class="check"><input type="checkbox" name="hazmat"> სახიფათო ტვირთი</label>
           <label class="field wide">შენიშვნა მძღოლისთვის <input name="notes"></label>
           <div class="wide" style="display:flex;gap:10px;align-items:center">
@@ -870,7 +870,7 @@ function renderNewLoad() {
   form.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      // Blank optional boxes are left out: "" isn't a number (an empty „ადგილები“ made the post fail, 27 Nov)
+      // Blank optional boxes are left out: "" isn't a number (an empty piece count made the post fail, 27 Nov)
       const values = Object.fromEntries(Object.entries(formData(form)).filter(([, v]) => v !== ""));
       const load = await api("/api/loads", { json: values });
       toast(`ტვირთი №${load.id} გამოქვეყნდა.`);
@@ -1304,7 +1304,7 @@ function docCard(d, call) {
       ${notPod ? docField("აღება", docStop(d.pickup)) : ""}
       ${notPod ? docField("მიტანა", docStop(d.delivery)) : ""}
       ${notPod ? docField("შიგთავსი", d.commodity && esc(d.commodity)) : ""}
-      ${notPod ? docField("ადგილები (პალეტი, ყუთი…)", pieces) : ""}
+      ${notPod ? docField("რაოდენობა (პალეტი, ყუთი…)", pieces) : ""}
       ${notPod ? docField("წონა", weight) : ""}
       ${d.rate != null ? docField("ფასი", `<span class="num">${esc(d.rate)}</span> ${esc(d.currency || "")}`) : ""}
       ${docField("ხელმოწერები", sigs)}

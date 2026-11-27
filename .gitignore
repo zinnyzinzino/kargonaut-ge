@@ -14,3 +14,6 @@ documents/*
 !documents/README.md
 evals/results/
 data/ai_log.jsonl
+
+# Local notes (e.g. demo_accounts.local.md: phone numbers and passwords)
+*.local.md

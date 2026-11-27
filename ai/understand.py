@@ -206,7 +206,7 @@ def check(answer, text, today=None):
     if all(size_said(x, text) for x in size.values()):
         values.update({f: round(float(x), 2) for f, x in size.items()})
     elif any(size.values()):
-        notes.append("ერთი ადგილის ზომა სრულად ვერ ამოვიკითხე: ჩაწერეთ სიგრძე, სიგანე და სიმაღლე მეტრებში.")
+        notes.append("პალეტის ზომა სრულად ვერ ამოვიკითხე: ჩაწერეთ სიგრძე, სიგანე და სიმაღლე მეტრებში.")
 
     day = _day(a["pickup_date"], a["pickup_date_words"], text, today)
     if day and day < today:

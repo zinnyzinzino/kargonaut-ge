@@ -82,7 +82,7 @@ python seed_demo.py --force # wipe the database and recreate the simulated demo 
 - Cargo size (27 Nov): a load may give ONE piece's length/width/height in metres (`loads.piece_*_m`, all three or
   none; form, describe box with a metres/cm/mm guard `understand.size_said`, transport order). `core/matching.size_check`
   compares it with the body size the driver entered: the piece fits the floor (turned, never tipped), under the roof
-  (flatbed: no roof), and pieces x volume <= body volume (lenient: assumes stacking); „ადგილები ერთმანეთზე არ იდება“
+  (flatbed: no roof), and pieces x volume <= body volume (lenient: assumes stacking); „პალეტები ერთმანეთზე არ იდება“
   (`loads.no_stacking`, form + describe box with a word guard) -> floor area instead, flatbeds too. Fails -> the truck
   doesn't see the load and can't offer, like weight. No body size -> not blocked, the offers table says „ძარის ზომა
   უცნობია“. Ranking unchanged (price first).
